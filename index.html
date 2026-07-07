@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Channel Point Redemption Queue</title>
+<style>
+  /* ---------- Dracula palette ---------- */
+  :root {
+    --bg:        #282a36;
+    --line:      #44475a;
+    --fg:        #f8f8f2;
+    --comment:   #6272a4;
+    --cyan:      #8be9fd;
+    --green:     #50fa7b;
+    --orange:    #ffb86c;
+    --pink:      #ff79c6;
+    --purple:    #bd93f9;
+    --red:       #ff5555;
+    --yellow:    #f1fa8c;
+
+    --card:      rgba(40, 42, 54, 0.92);
+    --radius:    12px;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: transparent;              /* OBS overlay: keep transparent */
+    font-family: "Segoe UI", "Inter", system-ui, sans-serif;
+    color: var(--fg);
+    overflow: hidden;
+  }
+
+  /* Anchor the whole stack to the bottom so items grow UPWARD.
+     Newest is inserted at the top -> oldest ends up at the bottom. */
+  #app {
+    position: fixed; inset: 0;
+    display: flex; flex-direction: column;
+    justify-content: flex-end;   /* stack up from the bottom */
+    padding: 16px; gap: 10px;
+  }
+  #queue { display: flex; flex-direction: column; gap: 10px; overflow: hidden; }
+
+  /* ---------- Status pill ---------- */
+  #status {
+    align-self: flex-start;
+    font-size: 12px; letter-spacing: .5px;
+    padding: 4px 10px; border-radius: 999px;
+    background: var(--card); border: 1px solid var(--line);
+    color: var(--comment); margin-bottom: 6px;
+  }
+  #status.live { color: var(--green); border-color: var(--green); }
+  #status.err  { color: var(--red);  border-color: var(--red);  }
+
+  /* ---------- Connect gate ---------- */
+  #gate {
+    align-self: flex-start;
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 18px 20px;
+    max-width: 420px; box-shadow: 0 6px 18px rgba(0,0,0,.45);
+  }
+  #gate h2 { margin: 0 0 6px; font-size: 16px; color: var(--purple); }
+  #gate p  { margin: 0 0 14px; font-size: 13px; line-height: 1.5; color: var(--comment); }
+  #gate code { color: var(--cyan); background: rgba(0,0,0,.25); padding: 1px 5px; border-radius: 5px; word-break: break-all; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--purple); color: var(--bg);
+    border: none; border-radius: 8px; padding: 10px 16px;
+    font-size: 14px; font-weight: 700; cursor: pointer;
+    transition: transform .1s, filter .15s;
+  }
+  .btn:hover { filter: brightness(1.08); }
+  .btn:active { transform: scale(.97); }
+  .btn.ghost { background: transparent; color: var(--comment); font-weight: 500; padding: 6px 4px; font-size: 12px; }
+
+  /* ---------- Redemption card ---------- */
+  .item {
+    display: flex; align-items: flex-start; gap: 12px;
+    background: var(--card); border: 1px solid var(--line);
+    border-left: 4px solid var(--accent, var(--purple));
+    border-radius: var(--radius); padding: 12px 14px;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.45);
+    backdrop-filter: blur(3px);
+    animation: pop .28s cubic-bezier(.2,.9,.3,1.2);
+  }
+  @keyframes pop { from { opacity:0; transform:translateY(14px) scale(.97);} to { opacity:1; transform:translateY(0) scale(1);} }
+  .item.done { animation: leave .45s ease forwards; }
+  @keyframes leave { to { opacity:0; transform:translateX(40px) scale(.95); max-height:0; margin-top:-10px; } }
+
+  /* ---------- Custom checkbox ---------- */
+  .check {
+    flex: 0 0 auto; width: 26px; height: 26px; margin-top: 2px;
+    border: 2px solid var(--comment); border-radius: 7px; background: transparent;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: border-color .15s, background .15s, transform .1s;
+  }
+  .check:hover { border-color: var(--green); transform: scale(1.08); }
+  .check:active { transform: scale(.94); }
+  .check svg { width: 16px; height: 16px; opacity: 0; transform: scale(.4); transition: .15s; }
+  .item.done .check { background: var(--green); border-color: var(--green); }
+  .item.done .check svg { opacity: 1; transform: scale(1); }
+
+  /* ---------- Card text ---------- */
+  .body { min-width: 0; flex: 1; }
+  .top { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .user { font-weight: 700; color: var(--accent, var(--purple)); font-size: 15px; }
+  .reward {
+    font-size: 12px; font-weight: 600; color: var(--bg);
+    background: var(--yellow); padding: 2px 8px; border-radius: 999px; white-space: nowrap;
+  }
+  .cost { font-size: 11px; font-weight: 700; color: var(--orange); }
+  .time { font-size: 11px; color: var(--comment); margin-left: auto; }
+  .msg { margin-top: 4px; font-size: 14px; line-height: 1.35; color: var(--fg); word-break: break-word; }
+  .item.done .msg, .item.done .user { text-decoration: line-through; opacity: .55; }
+
+  .empty { align-self: flex-start; color: var(--comment); font-size: 13px; font-style: italic; opacity: .8; }
+</style>
+</head>
+<body>
+  <div id="app">
+    <div id="status" style="display:none"></div>
+    <div id="gate" style="display:none"></div>
+    <div id="queue"></div>
+  </div>
+
+  <script>
+  /* ================================================================
+     SETUP (one time)
+     ----------------------------------------------------------------
+     1. Go to https://dev.twitch.tv/console/apps  ->  "Register Your Application"
+        - Name:          anything (e.g. "Redemption Queue")
+        - OAuth Redirect URLs: the EXACT url this page is served from, e.g.
+                         http://localhost:8777/redemption-queue.html
+        - Category:      Broadcasting Suite / Application Integration
+        - Client Type:   Public
+        Copy the generated **Client ID** into CONFIG.clientId below.
+     2. Serve this file over http (not file://). A redirect to file:// is
+        rejected by Twitch. The included launch config serves it on :8777.
+     3. Point OBS Browser Source at the same URL and click "Connect Twitch"
+        via OBS's Interact window (one time; the token is remembered).
+     ================================================================ */
+  const CONFIG = {
+    clientId: "",           // <-- paste your Twitch app Client ID here
+    maxItems: 40,
+    scopes: ["channel:read:redemptions"],
+  };
+
+  const params    = new URLSearchParams(location.search);
+  const DEMO      = params.get("demo") === "1";
+  // Redirect URI must EXACTLY match what you registered on Twitch.
+  const REDIRECT  = location.origin + location.pathname;
+  const STORE_KEY = "cpq:queue";
+  const TOKEN_KEY = "cpq:token";
+
+  const queueEl  = document.getElementById("queue");
+  const statusEl = document.getElementById("status");
+  const gateEl   = document.getElementById("gate");
+
+  const PALETTE = ["#bd93f9","#8be9fd","#50fa7b","#ffb86c","#ff79c6","#f1fa8c","#ff5555"];
+  const colorFor = (name) => {
+    let h = 0; for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+    return PALETTE[h % PALETTE.length];
+  };
+
+  function setStatus(text, cls) {
+    statusEl.style.display = "";
+    statusEl.className = cls || "";
+    statusEl.textContent = text;
+  }
+
+  /* ============================ QUEUE UI ============================ */
+  let items = load();
+  function load() { try { return JSON.parse(localStorage.getItem(STORE_KEY)) || []; } catch { return []; } }
+  function save()  { try { localStorage.setItem(STORE_KEY, JSON.stringify(items)); } catch {} }
+  const timeLabel = (ts) => new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+  function render() {
+    queueEl.innerHTML = "";
+    if (items.length === 0) {
+      const e = document.createElement("div");
+      e.className = "empty"; e.textContent = "Waiting for redemptions…";
+      queueEl.appendChild(e); return;
+    }
+    for (const it of items) queueEl.appendChild(buildCard(it)); // items[0] = newest = top
+  }
+
+  function buildCard(it) {
+    const el = document.createElement("div");
+    el.className = "item"; el.style.setProperty("--accent", it.color); el.dataset.id = it.id;
+
+    const check = document.createElement("button");
+    check.className = "check"; check.title = "Check off";
+    check.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="#282a36" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5L20 6"/></svg>';
+    check.addEventListener("click", () => checkOff(it.id));
+
+    const body = document.createElement("div"); body.className = "body";
+    const top  = document.createElement("div"); top.className = "top";
+
+    const user = document.createElement("span"); user.className = "user"; user.textContent = it.user;
+    const reward = document.createElement("span"); reward.className = "reward"; reward.textContent = it.reward;
+    top.append(user, reward);
+    if (it.cost) { const c = document.createElement("span"); c.className = "cost"; c.textContent = it.cost + " pts"; top.append(c); }
+    const time = document.createElement("span"); time.className = "time"; time.textContent = timeLabel(it.time); top.append(time);
+    body.appendChild(top);
+
+    if (it.message && it.message.trim()) {
+      const msg = document.createElement("div"); msg.className = "msg"; msg.textContent = it.message; body.appendChild(msg);
+    }
+    el.append(check, body);
+    return el;
+  }
+
+  function addItem({ user, message, reward, cost }) {
+    items.unshift({
+      id: Date.now() + "-" + Math.random().toString(36).slice(2, 7),
+      user: user || "someone",
+      message: message || "",
+      reward: reward || "Channel Points",
+      cost: cost || 0,
+      color: colorFor(user || "someone"),
+      time: Date.now(),
+    });
+    if (items.length > CONFIG.maxItems) items = items.slice(0, CONFIG.maxItems);
+    save(); render();
+  }
+
+  function checkOff(id) {
+    const card = queueEl.querySelector('.item[data-id="' + id + '"]');
+    const drop = () => { items = items.filter((x) => x.id !== id); save(); render(); };
+    if (card) { card.classList.add("done"); setTimeout(drop, 430); } else drop();
+  }
+
+  render();
+
+  /* ============================ DEMO ============================ */
+  if (DEMO) {
+    setStatus("DEMO MODE", "live");
+    const samples = [
+      { user: "PixelWizard", reward: "Hydrate!",     cost: 100, message: "Take a sip of water, streamer!" },
+      { user: "NightOwl_42", reward: "Song Request", cost: 500, message: "Play my song request pls" },
+      { user: "GlitchQueen", reward: "Emote Only",   cost: 250, message: "" },
+    ];
+    let i = 0;
+    addItem(samples[i++ % samples.length]);
+    setInterval(() => addItem(samples[i++ % samples.length]), 4000);
+  } else {
+    boot();
+  }
+
+  /* ==================== OAUTH + EVENTSUB ==================== */
+  async function boot() {
+    // 1) Capture token returned in the URL fragment after Twitch redirect.
+    if (location.hash.includes("access_token")) {
+      const h = new URLSearchParams(location.hash.slice(1));
+      const tok = h.get("access_token");
+      const savedState = sessionStorage.getItem("cpq:state");
+      if (tok && h.get("state") === savedState) {
+        localStorage.setItem(TOKEN_KEY, tok);
+      }
+      history.replaceState(null, "", REDIRECT);   // strip token from the URL
+    }
+
+    if (!CONFIG.clientId) { showGate("no-client"); return; }
+
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (!token) { showGate("connect"); return; }
+
+    // 2) Validate the stored token (also gives us the broadcaster user id).
+    let me;
+    try {
+      const r = await fetch("https://id.twitch.tv/oauth2/validate", {
+        headers: { Authorization: "OAuth " + token },
+      });
+      if (!r.ok) throw new Error("invalid");
+      me = await r.json();                         // { user_id, login, scopes, ... }
+    } catch {
+      localStorage.removeItem(TOKEN_KEY);
+      showGate("connect", "Session expired — reconnect.");
+      return;
+    }
+
+    gateEl.style.display = "none";
+    connectEventSub(token, me.user_id, me.login);
+  }
+
+  function showGate(mode, note) {
+    gateEl.style.display = "";
+    if (mode === "no-client") {
+      gateEl.innerHTML =
+        '<h2>Almost there</h2>' +
+        '<p>Add your Twitch <b>Client ID</b> to <code>CONFIG.clientId</code> in this file, ' +
+        'and register this redirect URL on your Twitch app:</p>' +
+        '<p><code>' + REDIRECT + '</code></p>';
+      return;
+    }
+    gateEl.innerHTML =
+      '<h2>Connect your Twitch</h2>' +
+      '<p>' + (note || "Authorize once to start receiving channel-point redemptions.") + '</p>';
+    const btn = document.createElement("button");
+    btn.className = "btn";
+    btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="#282a36"><path d="M4 2 2 6v14h5v2h3l2-2h4l5-5V2H4Zm2 2h13v9l-3 3h-4l-2 2v-2H6V4Zm5 3v5h2V7h-2Zm5 0v5h2V7h-2Z"/></svg> Connect Twitch';
+    btn.onclick = login;
+    gateEl.appendChild(btn);
+  }
+
+  function login() {
+    const state = Math.random().toString(36).slice(2);
+    sessionStorage.setItem("cpq:state", state);
+    const url = "https://id.twitch.tv/oauth2/authorize"
+      + "?response_type=token"
+      + "&client_id=" + encodeURIComponent(CONFIG.clientId)
+      + "&redirect_uri=" + encodeURIComponent(REDIRECT)
+      + "&scope=" + encodeURIComponent(CONFIG.scopes.join(" "))
+      + "&state=" + state;
+    location.href = url;
+  }
+
+  function connectEventSub(token, userId, login) {
+    const headers = { "Client-Id": CONFIG.clientId, Authorization: "Bearer " + token };
+    const seen = new Set();
+    let ws, keepaliveTimer;
+
+    function open(url) {
+      setStatus("connecting…", "");
+      ws = new WebSocket(url || "wss://eventsub.wss.twitch.tv/ws");
+
+      ws.onmessage = async (ev) => {
+        const { metadata, payload } = JSON.parse(ev.data);
+        const type = metadata.message_type;
+
+        // Twitch may resend a message; ignore duplicates.
+        if (seen.has(metadata.message_id)) return;
+        seen.add(metadata.message_id);
+        if (seen.size > 500) seen.clear();
+
+        if (type === "session_welcome") {
+          const sessionId = payload.session.id;
+          await subscribe(sessionId);
+          setStatus("● " + login, "live");
+          setTimeout(() => (statusEl.style.display = "none"), 3000);
+        } else if (type === "session_keepalive") {
+          // heartbeat; nothing to do
+        } else if (type === "session_reconnect") {
+          const newUrl = payload.session.reconnect_url;
+          try { ws.close(); } catch {}
+          open(newUrl);
+        } else if (type === "notification") {
+          const e = payload.event;
+          addItem({
+            user: e.user_name || e.user_login,
+            reward: (e.reward && e.reward.title) || "Channel Points",
+            cost: e.reward && e.reward.cost,
+            message: e.user_input || "",
+          });
+        } else if (type === "revocation") {
+          setStatus("subscription revoked — reconnect", "err");
+        }
+      };
+
+      ws.onclose = () => {
+        statusEl.style.display = "";
+        setStatus("reconnecting…", "err");
+        clearTimeout(keepaliveTimer);
+        keepaliveTimer = setTimeout(() => open(), 3000);   // auto-retry
+      };
+      ws.onerror = () => { try { ws.close(); } catch {} };
+    }
+
+    async function subscribe(sessionId) {
+      const res = await fetch("https://api.twitch.tv/helix/eventsub/subscriptions", {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "channel.channel_points_custom_reward_redemption.add",
+          version: "1",
+          condition: { broadcaster_user_id: userId },
+          transport: { method: "websocket", session_id: sessionId },
+        }),
+      });
+      if (!res.ok) {
+        const t = await res.text();
+        setStatus("subscribe failed (" + res.status + ")", "err");
+        console.error("EventSub subscribe failed:", res.status, t);
+      }
+    }
+
+    open();
+  }
+  </script>
+</body>
+</html>
