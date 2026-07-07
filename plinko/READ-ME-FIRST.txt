@@ -1,0 +1,74 @@
+TWITCH PLINKO - OBS Overlay
+===========================
+
+WHAT THIS IS
+  A Plinko board for your stream. It grabs the profile picture of
+  everyone in your Twitch chat and drops them all down a peg board.
+  Pegs light up when hit, a winner is crowned, and a leaderboard of
+  wins and points is kept between streams.
+
+WHAT'S IN THIS FOLDER
+  plinko.html        - the whole game (the only important file)
+  READ-ME-FIRST.txt  - this file
+
+SETUP (about 2 minutes, one time)
+
+  1. Start the same local server the redemption queue uses
+     (double-click start-windows.bat in the folder above this one).
+
+  2. On https://dev.twitch.tv/console/apps open your existing app and
+     ADD this URL to "OAuth Redirect URLs" (keep the old one too):
+         http://localhost:8777/plinko/plinko.html
+
+  3. In OBS: add a "Browser Source"
+       - URL:    http://localhost:8777/plinko/plinko.html
+       - Width:  1920    Height: 1080
+     Right-click the source -> Interact, then click "Connect Twitch"
+     and approve. (One time - it remembers you.)
+
+HOW TO PLAY (all buttons are clicked via OBS "Interact")
+  - Gather chatters : takes a snapshot of everyone currently in chat
+                      and fetches their profile pictures.
+  - Drop!           : releases the balls. Center slot pays 10,000.
+  - After the game the winner is announced and the leaderboard
+    (wins + total points) slides in on the right.
+  - 🏆 button (top right) shows/hides the leaderboard any time.
+  - "Reset leaderboard" is at the bottom of the leaderboard panel.
+    Click it twice (it asks you to confirm) to wipe the standings.
+
+TEST RUNS (no viewers needed)
+  Next to the buttons there's a number box and "▶ Test run".
+  Type how many balls you want and press it - you get numbered,
+  color-coded balls instead of real viewers. Test runs score on a
+  SEPARATE test-only leaderboard, so your real standings stay clean.
+  (The reset button on the test leaderboard resets only the test one.)
+
+GIVING OUT REAL POINTS (optional)
+  Twitch does not allow apps to GIVE channel points to viewers - there
+  is no API for it, so that part simply isn't possible with native
+  channel points. If you use StreamElements loyalty points, though,
+  the game can pay the winner automatically:
+
+  1. Go to https://streamelements.com/dashboard -> click your avatar
+     -> "My account" -> reveal "Account ID" and "JWT Token".
+  2. Open plinko.html in a text editor and fill these in near the top:
+         points: {
+           streamElementsChannelId: "your account id",
+           streamElementsJWT: "your jwt token",
+           awardEveryone: false,
+         },
+     awardEveryone: true pays EVERY player whatever slot they landed
+     in; false pays only the winner.
+
+  If you leave those empty, nothing breaks - wins and points just
+  count on the leaderboard for bragging rights.
+
+TIPS
+  - Add ?demo=1 to the URL to preview with fake players:
+        http://localhost:8777/plinko/plinko.html?demo=1
+  - Add ?auto=1 to gather + drop automatically when the page loads
+    (handy with an OBS "refresh browser source" hotkey).
+  - Up to 150 players per round (change maxPlayers in plinko.html).
+  - Known chat bots (Nightbot etc.) are excluded automatically -
+    edit the "ignore" list in plinko.html to add your own.
+  - Login lasts about 60 days, then just click "Connect Twitch" again.
