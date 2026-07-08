@@ -1,0 +1,95 @@
+TWITCH WHEEL - OBS Overlay
+==========================
+
+WHAT THIS IS
+  A spinning name wheel for your stream. Everyone in your Twitch chat
+  gets their own color-coded slice with their name on it. Spin it and
+  one lucky slice wins. A leaderboard of wins is kept between streams.
+
+  It's the sibling of the Plinko element - same look, same login, same
+  visuals console - so it feels like part of one set.
+
+WHAT'S IN THIS FOLDER
+  wheel.html         - the whole thing (the only important file)
+  READ-ME-FIRST.txt  - this file
+
+SETUP (about 2 minutes, one time)
+
+  1. Start the same local server the other overlays use
+     (double-click start-windows.bat in the folder above this one).
+
+  2. On https://dev.twitch.tv/console/apps open your existing app and
+     ADD this URL to "OAuth Redirect URLs" (keep the old ones too):
+         http://localhost:8777/wheel/wheel.html
+
+  3. In OBS: add a "Browser Source"
+       - URL:    http://localhost:8777/wheel/wheel.html
+       - Width:  1920    Height: 1080
+     Right-click the source -> Interact, then click "Connect Twitch"
+     and approve. (One time - it remembers you.)
+
+HOW TO PLAY (all buttons are clicked via OBS "Interact")
+  - Gather chatters : takes a snapshot of everyone currently in chat
+                      and builds a slice for each of them.
+  - Spin            : spins the wheel; the slice under the top pointer
+                      when it stops is the winner (or press SPACE).
+  - The winner is announced big and the leaderboard (wins + how many
+    spins each person has been in) slides in on the right.
+  - LB button (top right) shows/hides the leaderboard any time.
+  - "Reset leaderboard" is at the bottom of the leaderboard panel.
+    Click it twice (it asks you to confirm) to wipe the standings.
+
+  Long names are trimmed with "..." to fit their slice. With a very
+  large chat the thinnest slices drop their label but still spin and
+  can win - the winner is always announced by full name.
+
+VISUALS CONSOLE (the "FX" panel, top-left)
+  Live sliders to tune how the wheel renders. Press H to hide/show it
+  (hide it before you go live). Every setting is remembered.
+    - PIXEL SIZE  : chunkiness of the pixels (1-12). Also the main
+                    performance lever. 1 = crispest full-res look.
+    - PIXEL-PERFECT : keeps every pixel an exact whole-number size so
+                    nearest-neighbor scaling stays sharp. A few pixels
+                    of letterbox at the edges is normal. Turn off to
+                    stretch edge-to-edge.
+    - LABEL SIZE  : scales the username text on the slices.
+    - WIN GLOW    : how strong the winning-slice flash is (0 = off).
+    - ALPHA BG    : transparent background for layering in OBS.
+    - PALETTE     : swap the 3-color scheme (EMBER, PHOSPHOR, MONO,
+                    DMG, ICE, MAGMA, PAPER).
+    - RESET       : restore all visual settings to defaults.
+  Keys: H = console, SPACE = spin, F = fullscreen.
+
+TEST SPINS (no viewers needed)
+  Next to the buttons there's a number box and "▶ Test spin". Type how
+  many slices you want and press it - you get numbered, color-coded
+  slices instead of real viewers, and it spins right away. Test spins
+  score on a SEPARATE test-only leaderboard so your real stats stay
+  clean.
+
+GIVING OUT REAL POINTS (optional)
+  Twitch has no API to grant channel points to viewers. If you use
+  StreamElements loyalty points, the wheel can pay the winner:
+    1. https://streamelements.com/dashboard -> your avatar ->
+       "My account" -> reveal "Account ID" and "JWT Token".
+    2. Open wheel.html in a text editor and fill these in near the top:
+           points: {
+             streamElementsChannelId: "your account id",
+             streamElementsJWT: "your jwt token",
+             award: 1000,
+           },
+       "award" is how many points the winner gets.
+  Leave them empty and wins just count on the leaderboard for fun.
+  NOTE: the JWT is a secret - only put it in your LOCAL copy, never in
+  a copy you publish (e.g. GitHub).
+
+TIPS
+  - Add ?demo=1 to preview with fake players:
+        http://localhost:8777/wheel/wheel.html?demo=1
+    (?demo=1&count=24 sets how many.)
+  - Add ?auto=1 to gather + spin automatically when the page loads.
+  - ?px=4 and ?alpha=1 set the starting pixel size / transparency,
+    but the FX console is the easier way to tune both.
+  - Up to 150 people per wheel (change maxPlayers in wheel.html).
+  - Known chat bots (Nightbot etc.) are excluded automatically.
+  - Login lasts about 60 days, then just click "Connect Twitch" again.

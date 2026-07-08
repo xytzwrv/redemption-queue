@@ -1,0 +1,1093 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TWITCH WHEEL — 1-BIT FIELD SYSTEM</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&display=swap');
+
+  /* ---------- 1-BIT FIELD SYSTEM · EMBER ---------- */
+  :root{
+    --bg:#140d00;      /* dominant  · field */
+    --blob:#c05a00;    /* secondary · structure */
+    --dot:#ffd27a;     /* accent    · text / marks */
+    --dim:#6e4300;     /* de-emphasized line */
+    --mono: ui-monospace,"Cascadia Mono",Menlo,Consolas,monospace;
+    --pix: 'Silkscreen', var(--mono);
+  }
+
+  *{ box-sizing:border-box; margin:0; padding:0; }
+
+  html, body{
+    height:100%;
+    background:transparent;
+    font-family:var(--mono); font-size:13px;
+    color:var(--dot);
+    overflow:hidden;
+    -webkit-font-smoothing:none;
+  }
+
+  #board{ position:fixed; top:0; left:0; display:block;
+          image-rendering:pixelated; image-rendering:crisp-edges; }
+
+  img{ image-rendering:pixelated; image-rendering:crisp-edges; }
+
+  /* ---------- status strip ---------- */
+  #status{
+    position:fixed; bottom:16px; left:16px; z-index:20;
+    display:flex; align-items:center; gap:8px;
+    font-family:var(--pix); font-size:10px; letter-spacing:2px;
+    padding:6px 10px; border:1px solid var(--dot);
+    background:var(--bg); color:var(--dot);
+  }
+  #status::before{ content:""; width:6px; height:6px; background:var(--dot); }
+  #status.err{ border-color:var(--blob); color:var(--blob); }
+  #status.err::before{ background:var(--blob); }
+
+  /* ---------- connect gate ---------- */
+  #gate{
+    position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
+    background:var(--bg); border:1px solid var(--dot);
+    max-width:460px; z-index:30;
+  }
+  #gate .strip{
+    display:flex; align-items:center; gap:8px; padding:8px 12px;
+    border-bottom:1px solid var(--dot);
+    font-family:var(--pix); font-size:10px; letter-spacing:2px;
+  }
+  #gate .strip .sq{ width:6px; height:6px; background:var(--dot); }
+  #gate .inner{ padding:14px 12px; }
+  #gate p{ margin:0 0 12px; font-size:12px; line-height:1.65; color:var(--dot); opacity:.8; }
+  #gate code{ font-family:var(--mono); background:#00000055; border:1px solid var(--dim); padding:1px 4px; font-size:12px; word-break:break-all; }
+
+  .btn{
+    display:inline-flex; align-items:center; gap:8px;
+    background:var(--bg); color:var(--dot); border:1px solid var(--dot);
+    font-family:var(--pix); font-size:10px; letter-spacing:1px;
+    padding:7px 12px; cursor:pointer; text-transform:uppercase;
+  }
+  .btn:hover, .btn.on{ background:var(--dot); color:var(--bg); }
+  .btn.ghost{ border-color:var(--dim); color:var(--dot); opacity:.75; }
+  .btn.ghost:hover{ background:var(--dot); color:var(--bg); opacity:1; }
+  .btn:disabled{ opacity:.4; cursor:default; }
+  .btn:disabled:hover{ background:var(--bg); color:var(--dot); }
+
+  /* ---------- control bar ---------- */
+  #controls{
+    position:fixed; bottom:16px; left:50%; transform:translateX(-50%);
+    display:flex; gap:8px; z-index:20; align-items:stretch;
+  }
+  .testwrap{
+    display:flex; gap:8px; align-items:stretch;
+    padding-left:12px; border-left:1px solid var(--dim);
+  }
+  .testwrap input{
+    width:52px; background:var(--bg); color:var(--dot);
+    border:1px solid var(--dot); font-family:var(--mono);
+    font-size:12px; padding:3px; text-align:center;
+  }
+  .testwrap input:focus{ outline:none; border-color:var(--blob); }
+
+  /* ---------- winner panel ---------- */
+  #winner{
+    position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
+    display:none; flex-direction:column;
+    background:var(--bg); border:1px solid var(--dot);
+    z-index:25; min-width:280px;
+  }
+  #winner.show{ display:flex; animation:winpop .35s steps(4) forwards; }
+  @keyframes winpop{ from{ transform:translate(-50%,-50%) scale(.7); } to{ transform:translate(-50%,-50%) scale(1); } }
+  #winner .strip{
+    display:flex; align-items:center; gap:8px; padding:8px 12px;
+    border-bottom:1px solid var(--dot);
+    font-family:var(--pix); font-size:10px; letter-spacing:2px;
+  }
+  #winner .strip .sq{ width:6px; height:6px; background:var(--dot); }
+  #winner .inner{ display:flex; flex-direction:column; align-items:center; gap:8px; padding:18px 32px; }
+  #winner img{ width:96px; height:96px; border:1px solid var(--dot); background:var(--dim); }
+  #winner .wname{ font-family:var(--pix); font-weight:700; font-size:18px; letter-spacing:1px; text-align:center; }
+  #winner .wpts{ font-family:var(--mono); font-size:13px; color:var(--blob); }
+  #winner .wsub{ font-family:var(--pix); font-size:9px; letter-spacing:2px; opacity:.55; }
+
+  /* ---------- leaderboard console ---------- */
+  #lb{
+    position:fixed; top:50%; right:16px; transform:translateY(-50%);
+    display:none; flex-direction:column;
+    background:var(--bg); border:1px solid var(--dot);
+    z-index:24; width:300px;
+  }
+  #lb.show{ display:flex; }
+  #lb .strip{
+    display:flex; align-items:center; gap:8px; padding:8px 12px;
+    border-bottom:1px solid var(--dot);
+    font-family:var(--pix); font-size:10px; letter-spacing:2px;
+  }
+  #lb .strip .sq{ width:6px; height:6px; background:var(--dot); }
+  #lb .rows{ display:flex; flex-direction:column; }
+  #lb .row{
+    display:flex; align-items:center; gap:10px;
+    padding:6px 12px; border-bottom:1px solid var(--dim);
+    font-size:12px;
+  }
+  #lb .rank{ width:18px; font-family:var(--pix); font-size:10px; color:var(--dim); flex:0 0 auto; }
+  #lb .row:nth-child(1) .rank{ color:var(--dot); }
+  #lb .row:nth-child(2) .rank, #lb .row:nth-child(3) .rank{ color:var(--blob); }
+  #lb img{ width:20px; height:20px; border:1px solid var(--dim); background:var(--dim); flex:0 0 auto; }
+  #lb .nm{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-family:var(--mono); }
+  #lb .wins{ font-family:var(--mono); color:var(--dot); white-space:nowrap; }
+  #lb .pts{ font-family:var(--mono); color:var(--blob); min-width:58px; text-align:right; white-space:nowrap; }
+  #lb .none{ padding:10px 12px; font-size:11px; opacity:.55; }
+  #lb .foot{ padding:10px 12px; display:flex; justify-content:center; border-top:1px solid var(--dim); }
+  #lb .lbreset{ font-size:9px; padding:5px 10px; }
+  #lb .lbreset.arm{ border-color:var(--blob); color:var(--blob); }
+  #lb .lbreset.arm:hover{ background:var(--blob); color:var(--bg); }
+
+  #lbToggle{
+    position:fixed; top:16px; right:16px; z-index:20;
+    background:var(--bg); color:var(--dot); border:1px solid var(--dot);
+    font-family:var(--pix); font-size:10px; letter-spacing:1px;
+    width:38px; height:32px; cursor:pointer; padding:0;
+  }
+  #lbToggle:hover{ background:var(--dot); color:var(--bg); }
+
+  /* ---------- visuals console ---------- */
+  #fxToggle{
+    position:fixed; top:16px; left:16px; z-index:20;
+    background:var(--bg); color:var(--dot); border:1px solid var(--dot);
+    font-family:var(--pix); font-size:10px; letter-spacing:1px;
+    width:38px; height:32px; cursor:pointer; padding:0;
+  }
+  #fxToggle:hover{ background:var(--dot); color:var(--bg); }
+
+  #fx{
+    position:fixed; top:16px; left:16px; width:236px; z-index:26;
+    display:none; flex-direction:column;
+    background:var(--bg); border:1px solid var(--dot);
+    max-height:calc(100vh - 32px); overflow-y:auto;
+  }
+  #fx.show{ display:flex; }
+  #fx .strip{
+    position:sticky; top:0; background:var(--bg);
+    display:flex; align-items:center; gap:8px; padding:8px 12px;
+    border-bottom:1px solid var(--dot);
+    font-family:var(--pix); font-size:10px; letter-spacing:2px;
+  }
+  #fx .strip .sq{ width:6px; height:6px; background:var(--dot); }
+  #fx .strip .x{
+    margin-left:auto; background:none; border:0; color:var(--dot);
+    font-family:var(--mono); font-size:14px; cursor:pointer; padding:0 2px;
+  }
+  #fx .strip .x:hover{ color:var(--blob); }
+  #fx .grp{
+    padding:10px 12px 2px; border-top:1px solid var(--dim);
+    font-family:var(--pix); font-size:9px; letter-spacing:1.5px; opacity:.55;
+  }
+  #fx .grp:first-of-type{ border-top:0; }
+  #fx .ctl{ padding:6px 12px 10px; }
+  #fx .ctl .lr{
+    display:flex; justify-content:space-between; align-items:baseline;
+    font-family:var(--pix); font-size:9px; letter-spacing:1px; margin-bottom:5px;
+  }
+  #fx .ctl .lr .val{ font-family:var(--mono); font-size:11px; color:var(--dot); }
+  #fx input[type=range]{
+    -webkit-appearance:none; appearance:none;
+    width:100%; height:11px; background:transparent; display:block;
+  }
+  #fx input[type=range]::-webkit-slider-runnable-track{ height:11px; background:var(--bg); border:1px solid var(--dot); }
+  #fx input[type=range]::-webkit-slider-thumb{ -webkit-appearance:none; width:7px; height:9px; margin-top:1px; background:var(--dot); }
+  #fx input[type=range]::-moz-range-track{ height:11px; background:var(--bg); border:1px solid var(--dot); box-sizing:border-box; }
+  #fx input[type=range]::-moz-range-thumb{ width:7px; height:9px; background:var(--dot); border:0; border-radius:0; }
+  #fx .togglerow{ display:flex; gap:8px; padding:2px 12px 10px; flex-wrap:wrap; }
+  #fx .togglerow .btn{ flex:1; justify-content:center; font-size:9px; padding:5px 8px; }
+  #fx .pals{ display:grid; grid-template-columns:repeat(4,1fr); gap:5px; padding:2px 12px 12px; }
+  #fx .palc{ height:20px; border:1px solid var(--dim); display:flex; cursor:pointer; }
+  #fx .palc.sel{ border-color:var(--dot); outline:1px solid var(--dot); outline-offset:-3px; }
+  #fx .palc span{ flex:1; }
+  #fx .foot{
+    border-top:1px solid var(--dim); padding:8px 12px;
+    display:flex; justify-content:space-between; align-items:center; gap:8px;
+  }
+  #fx .foot .hint{ font-family:var(--pix); font-size:8px; letter-spacing:1px; opacity:.5; }
+  #fx .foot .btn{ font-size:9px; padding:4px 8px; }
+</style>
+</head>
+<body>
+  <canvas id="board"></canvas>
+
+  <div id="status" style="display:none"></div>
+  <div id="gate" style="display:none"></div>
+  <div id="controls"></div>
+
+  <div id="winner">
+    <div class="strip"><span class="sq"></span>WINNER</div>
+    <div class="inner">
+      <img alt="">
+      <div class="wname"></div>
+      <div class="wpts"></div>
+      <div class="wsub">WHEEL WINNER</div>
+    </div>
+  </div>
+
+  <button id="lbToggle" title="Leaderboard">LB</button>
+  <div id="lb"></div>
+
+  <button id="fxToggle" title="Visual console (H)">FX</button>
+  <div id="fx"></div>
+
+  <script>
+  /* ================================================================
+     TWITCH WHEEL — everyone in chat gets a color-coded slice with
+     their name on it; spin it, one wins. Styled to the 1-BIT FIELD
+     SYSTEM: indexed tri-tone color, low-res pixel canvas, hairline
+     chrome, Bayer-dithered falloff. Sibling to the Plinko element.
+     ----------------------------------------------------------------
+     SETUP (one time)
+     1. Uses the same Twitch app as the queue/plinko. On
+        https://dev.twitch.tv/console/apps add this page's URL to the
+        app's OAuth Redirect URLs, e.g.
+            http://localhost:8777/wheel/wheel.html
+     2. Serve over http (not file://) — the included server does this.
+     3. In OBS add a Browser Source pointing at the URL above
+        (1920x1080 recommended), right-click -> Interact to log in
+        and to press the GATHER / SPIN buttons.
+
+     URL flags:
+        ?demo=1          fake players, no Twitch login needed
+        ?demo=1&count=24 number of fake players
+        ?auto=1          gather + spin automatically on page load
+        ?px=4            initial pixel size (1-12, default 1)
+        ?alpha=1         start with ALPHA BG on (field pixels transparent)
+
+     Press H for the VISUALS console; SPACE spins; F = fullscreen.
+     ================================================================ */
+  const CONFIG = {
+    clientId: "bgq2oi4x4ex5soyt4dmvc0jy9vrcuj",   // same Twitch app as the queue
+    scopes: ["moderator:read:chatters"],          // needed to list who's in chat
+    maxPlayers: 150,
+    ignore: ["nightbot", "streamelements", "streamlabs", "moobot",
+             "sery_bot", "soundalerts", "fossabot", "wizebot"],
+    spin: { minVel: 11, maxVel: 17, decay: 0.5, stopVel: 0.12 },  // rad/s, decay per sec
+
+    /* Optional real point payout to the winner via StreamElements.
+       Twitch has no API to grant channel points to viewers. Fill both
+       in on your LOCAL copy only (the JWT is a secret — never publish it).
+       award is a flat number of loyalty points for the winner. */
+    points: {
+      streamElementsChannelId: "",
+      streamElementsJWT: "",
+      award: 1000,
+    },
+  };
+
+  const params   = new URLSearchParams(location.search);
+  const DEMO     = params.get("demo") === "1";
+  const AUTO     = params.get("auto") === "1";
+  const REDIRECT = location.origin + location.pathname;
+  const TOKEN_KEY = "whl:token";
+
+  /* ---------- visual settings · live console + persisted ---------- */
+  const VIS_KEY = "whl:visuals";
+  const VIS_DEFAULT = { pix: 1, labelScale: 1, glow: 1, perfect: true, alpha: false, palette: 0, fxOpen: true };
+  function loadVis(){ try { return { ...VIS_DEFAULT, ...(JSON.parse(localStorage.getItem(VIS_KEY)) || {}) }; } catch { return { ...VIS_DEFAULT }; } }
+  function saveVis(){ try { localStorage.setItem(VIS_KEY, JSON.stringify(vis)); } catch {} }
+  let vis = loadVis();
+  if (params.get("px"))            vis.pix   = Math.max(1, Math.min(12, parseInt(params.get("px")) || vis.pix));
+  if (params.get("alpha") === "1") vis.alpha = true;
+  let PIX   = vis.pix;
+  let ALPHA = vis.alpha;
+
+  // Test/demo runs score on their own board so real stats stay clean.
+  let testMode = false;
+  const lbKey = () => (testMode ? "whl:leaderboard:test" : "whl:leaderboard");
+
+  const canvas    = document.getElementById("board");
+  const ctx       = canvas.getContext("2d");
+  const statusEl  = document.getElementById("status");
+  const gateEl    = document.getElementById("gate");
+  const controlsEl= document.getElementById("controls");
+  const winnerEl  = document.getElementById("winner");
+  const lbEl      = document.getElementById("lb");
+  const lbToggle  = document.getElementById("lbToggle");
+  const fxEl      = document.getElementById("fx");
+  const fxToggle  = document.getElementById("fxToggle");
+
+  /* ---------- indexed palettes · fixed roles: field / structure / mark ---------- */
+  const PALETTES = [
+    { name:"EMBER",    bg:"#140d00", blob:"#c05a00", dot:"#ffd27a", dim:"#6e4300" },
+    { name:"PHOSPHOR", bg:"#06120a", blob:"#1f7a3d", dot:"#b6ff7a", dim:"#0d3d1f" },
+    { name:"MONO",     bg:"#000000", blob:"#6e6e6e", dot:"#ffffff", dim:"#3a3a3a" },
+    { name:"DMG",      bg:"#0f380f", blob:"#306230", dot:"#9bbc0f", dim:"#1e4a1e" },
+    { name:"ICE",      bg:"#00121a", blob:"#1c6f8c", dot:"#7fdfff", dim:"#0a3646" },
+    { name:"MAGMA",    bg:"#180008", blob:"#a01f3c", dot:"#ff8fae", dim:"#50101e" },
+    { name:"PAPER",    bg:"#e8e4d8", blob:"#b7ac90", dot:"#151008", dim:"#a89d80" },
+  ];
+  let COL = { bg:"#140d00", blob:"#c05a00", dot:"#ffd27a", dim:"#6e4300" };
+  function applyPalette(){
+    const p = PALETTES[vis.palette] || PALETTES[0];
+    COL = { bg:p.bg, blob:p.blob, dot:p.dot, dim:p.dim };
+    const r = document.documentElement.style;
+    r.setProperty("--bg", p.bg); r.setProperty("--blob", p.blob);
+    r.setProperty("--dot", p.dot); r.setProperty("--dim", p.dim);
+    document.documentElement.style.background = vis.alpha ? "transparent" : p.bg;
+  }
+  const MONO = 'ui-monospace,"Cascadia Mono",Menlo,Consolas,monospace';
+
+  // Slice colors: accents from the system's sibling palettes so the wheel
+  // reads multi-color but in-family. Adjacent slices avoid repeating a hue.
+  const PALETTE = ["#ffd27a","#b6ff7a","#7fdfff","#ff8fae","#9bbc0f","#ffffff","#c05a00"];
+  const colorFor = (name) => {
+    let h = 0; for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+    return PALETTE[h % PALETTE.length];
+  };
+  const fmt = (n) => n.toLocaleString("en-US");
+
+  /* ---------- Bayer 4x4 — the one falloff mechanism ---------- */
+  const BM = [0,8,2,10,12,4,14,6,3,11,1,9,15,7,13,5];
+  const bayer = (cx, cy, v) => v > (BM[(cy & 3) * 4 + (cx & 3)] + 0.5) / 16;
+
+  function setStatus(text, cls, hideAfter) {
+    statusEl.style.display = "flex";
+    statusEl.className = cls || "";
+    statusEl.textContent = text.toUpperCase();
+    clearTimeout(setStatus._t);
+    if (hideAfter) setStatus._t = setTimeout(() => (statusEl.style.display = "none"), hideAfter);
+  }
+
+  /* ============================================================
+     GEOMETRY — canvas is a low-res pixel grid, scaled jagged.
+     Pixel-perfect mode snaps to integer scaling (see Plinko).
+     ============================================================ */
+  let W = 0, H = 0, cx = 0, cy = 0, R = 0;
+
+  function rebuild() {
+    const iw = window.innerWidth, ih = window.innerHeight;
+    if (vis.perfect) {
+      const cols = Math.max(1, Math.floor(iw / PIX));
+      const rows = Math.max(1, Math.floor(ih / PIX));
+      W = cols * PIX; H = rows * PIX;
+      canvas.width = cols; canvas.height = rows;
+      canvas.style.width = W + "px"; canvas.style.height = H + "px";
+      canvas.style.left = Math.floor((iw - W) / 2) + "px";
+      canvas.style.top  = Math.floor((ih - H) / 2) + "px";
+    } else {
+      W = iw; H = ih;
+      canvas.width = Math.ceil(iw / PIX);
+      canvas.height = Math.ceil(ih / PIX);
+      canvas.style.width = "100%"; canvas.style.height = "100%";
+      canvas.style.left = "0"; canvas.style.top = "0";
+    }
+    ctx.setTransform(1 / PIX, 0, 0, 1 / PIX, 0, 0);
+    ctx.imageSmoothingEnabled = false;
+
+    cx = W / 2; cy = H / 2;
+    R = Math.min(W, H) * 0.42;
+  }
+  window.addEventListener("resize", rebuild);
+
+  const norm2pi = (a) => { a %= Math.PI * 2; return a < 0 ? a + Math.PI * 2 : a; };
+  const POINTER = -Math.PI / 2;   // pointer sits at the top, aiming into the wheel
+
+  /* ============================================================
+     WHEEL STATE + SPIN
+     ============================================================ */
+  let players = [];        // {login, name, avatar, img, color?}
+  let phase = "boot";      // boot | idle | ready | spinning | done
+  let rot = 0, av = 0, spinning = false;
+  let winnerIdx = -1, winFlash = 0;
+  let confetti = [];
+  let testCount = 12;
+
+  function sliceCount() { return Math.max(players.length, 1); }
+  function segAngle() { return (Math.PI * 2) / sliceCount(); }
+
+  function indexUnderPointer() {
+    if (!players.length) return -1;
+    const seg = segAngle();
+    return Math.floor(norm2pi(POINTER - rot) / seg) % players.length;
+  }
+
+  function spin() {
+    if (spinning || players.length < 2) return;
+    phase = "spinning";
+    winnerIdx = -1; winFlash = 0;
+    winnerEl.classList.remove("show");
+    hideLeaderboard();
+    setButtons([]);
+    const S = CONFIG.spin;
+    av = S.minVel + Math.random() * (S.maxVel - S.minVel);
+    rot += Math.random() * Math.PI * 2;   // random phase so it never feels rigged
+    spinning = true;
+    setStatus("spinning…", "");
+  }
+
+  function finishSpin() {
+    spinning = false;
+    phase = "done";
+    winnerIdx = indexUnderPointer();
+    winFlash = 1;
+    const win = players[winnerIdx];
+
+    updateLeaderboard(win);
+    const rec = loadLB()[win.login] || { wins: 1 };
+
+    const img = winnerEl.querySelector("img");
+    img.src = win.avatar ||
+      makeSprite(win.img, win.name, 24, win.color).toDataURL();
+    img.style.background = win.color || colorFor(win.name);
+    img.style.borderColor = win.color || colorFor(win.name);
+    winnerEl.querySelector(".wname").textContent = win.name;
+    const ptsEl = winnerEl.querySelector(".wpts");
+    ptsEl.textContent = rec.wins + (rec.wins === 1 ? " WIN" : " WINS");
+    winnerEl.querySelector(".wsub").textContent = testMode ? "TEST WINNER" : "WHEEL WINNER";
+    winnerEl.classList.add("show");
+    setStatus(win.name + " wins", "", 6000);
+    setTimeout(() => winnerEl.classList.remove("show"), 8000);
+
+    awardPoints(win).then((paid) => {
+      if (paid) ptsEl.textContent = "+" + fmt(CONFIG.points.award) + " PTS PAID OUT";
+    });
+
+    // Confetti bursting from the winning slice (indexed colors, dither-faded).
+    const seg = segAngle(), mid = winnerIdx * seg + seg / 2 + rot;
+    const wx = cx + Math.cos(mid) * R * 0.7, wy = cy + Math.sin(mid) * R * 0.7;
+    for (let i = 0; i < 150; i++) {
+      confetti.push({
+        x: wx, y: wy,
+        vx: (Math.random() - 0.5) * 700,
+        vy: -200 - Math.random() * 520,
+        color: i % 3 === 0 ? COL.blob : COL.dot,
+        life: 2.4 + Math.random() * 1.6,
+      });
+    }
+
+    showLeaderboard();
+    const btns = [];
+    if (auth || DEMO) btns.push(["SPIN AGAIN", "on", spin]);
+    if (auth) btns.push(["REGATHER", "ghost", gather]);
+    btns.push(["CLEAR", "ghost", () => {
+      players = []; winnerIdx = -1; hideLeaderboard(); phase = "idle"; idleButtons();
+    }]);
+    setButtons(btns, true);
+  }
+
+  /* ============================================================
+     RENDER — wedges, labels, pointer, hub. Priority: solid color
+     fills; falloff (winner glow) is Bayer-dithered, never alpha.
+     ============================================================ */
+  function fitText(name, maxW) {
+    if (ctx.measureText(name).width <= maxW) return name;
+    let s = name;
+    while (s.length > 1 && ctx.measureText(s + "…").width > maxW) s = s.slice(0, -1);
+    return s + "…";
+  }
+
+  function drawWheel(dt) {
+    const seg = segAngle();
+
+    // Wedges
+    if (players.length) {
+      for (let i = 0; i < players.length; i++) {
+        const a0 = i * seg + rot, a1 = a0 + seg;
+        ctx.fillStyle = players[i].color || colorFor(players[i].name);
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.arc(cx, cy, R, a0, a1);
+        ctx.closePath();
+        ctx.fill();
+        // hairline separator (field color) between adjacent slices
+        ctx.strokeStyle = COL.bg;
+        ctx.lineWidth = Math.max(1, PIX);
+        ctx.stroke();
+      }
+    }
+
+    // Winner glow — Bayer-dithered accent over the winning wedge, pulsing.
+    if (winnerIdx >= 0 && winFlash > 0.01 && vis.glow > 0.01) {
+      const a0 = winnerIdx * seg + rot, a1 = a0 + seg;
+      const pulse = winFlash * vis.glow * (0.55 + 0.45 * Math.sin(performance.now() / 90));
+      ctx.fillStyle = COL.dot;
+      const x0 = Math.floor((cx - R) / PIX), x1 = Math.ceil((cx + R) / PIX);
+      const y0 = Math.floor((cy - R) / PIX), y1 = Math.ceil((cy + R) / PIX);
+      for (let gy = y0; gy <= y1; gy++) {
+        for (let gx = x0; gx <= x1; gx++) {
+          const px = gx * PIX + PIX / 2, py = gy * PIX + PIX / 2;
+          const dx = px - cx, dy = py - cy, d = Math.hypot(dx, dy);
+          if (d > R) continue;
+          let ang = norm2pi(Math.atan2(dy, dx)), lo = norm2pi(a0), hi = lo + seg;
+          if (!(ang >= lo && ang < hi) && !(ang + Math.PI * 2 >= lo && ang + Math.PI * 2 < hi)) continue;
+          if (bayer(gx, gy, pulse)) ctx.fillRect(gx * PIX, gy * PIX, PIX, PIX);
+        }
+      }
+      winFlash = Math.max(0, winFlash - dt / 6);   // lingers ~6s
+    }
+
+    // Labels — usernames along each slice's midline, dark on the bright fill.
+    if (players.length) {
+      const fontSize = Math.max(PIX * 3, Math.min(R * 0.11, R * seg * 0.62)) * vis.labelScale;
+      if (fontSize >= PIX * 2.5 && seg > 0.045) {
+        ctx.font = "700 " + fontSize + "px " + MONO;
+        ctx.textBaseline = "middle";
+        ctx.fillStyle = COL.bg;
+        const inner = R * 0.30, outer = R * 0.95, budget = outer - inner;
+        for (let i = 0; i < players.length; i++) {
+          const mid = i * seg + seg / 2 + rot;
+          const label = fitText(players[i].name, budget);
+          ctx.save();
+          ctx.translate(cx, cy);
+          ctx.rotate(mid);
+          if (Math.cos(mid) < 0) {          // left half → flip so it reads upright
+            ctx.rotate(Math.PI);
+            ctx.textAlign = "left";
+            ctx.fillText(label, -outer, 0);
+          } else {
+            ctx.textAlign = "right";
+            ctx.fillText(label, outer, 0);
+          }
+          ctx.restore();
+        }
+      }
+    }
+
+    // Rim
+    ctx.strokeStyle = COL.dot;
+    ctx.lineWidth = Math.max(1, PIX);
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.stroke();
+
+    // Center hub
+    ctx.fillStyle = COL.bg;
+    ctx.beginPath(); ctx.arc(cx, cy, Math.max(6, R * 0.06), 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = COL.dot; ctx.lineWidth = Math.max(1, PIX);
+    ctx.beginPath(); ctx.arc(cx, cy, Math.max(6, R * 0.06), 0, Math.PI * 2); ctx.stroke();
+
+    // Pointer at top, aiming down into the wheel
+    const pw = Math.max(8, R * 0.05), py = cy - R - Math.max(2, PIX);
+    ctx.fillStyle = COL.dot;
+    ctx.beginPath();
+    ctx.moveTo(cx - pw, py - pw);
+    ctx.lineTo(cx + pw, py - pw);
+    ctx.lineTo(cx, py + pw * 1.4);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  function draw(dt) {
+    ctx.clearRect(0, 0, W + PIX, H + PIX);
+    if (!ALPHA) { ctx.fillStyle = COL.bg; ctx.fillRect(0, 0, W + PIX, H + PIX); }
+
+    drawWheel(dt);
+
+    // Confetti: hard palette squares, dither-faded by remaining life
+    for (let i = confetti.length - 1; i >= 0; i--) {
+      const c = confetti[i];
+      c.vy += 900 * dt; c.x += c.vx * dt; c.y += c.vy * dt; c.life -= dt;
+      if (c.life <= 0 || c.y > H + 20) { confetti.splice(i, 1); continue; }
+      const gx = Math.floor(c.x / PIX), gy = Math.floor(c.y / PIX);
+      if (!bayer(gx, gy, Math.min(1, c.life))) continue;
+      ctx.fillStyle = c.color;
+      ctx.fillRect(gx * PIX, gy * PIX, PIX * 2, PIX * 2);
+    }
+  }
+
+  let lastFrame = 0;
+  function frame(t) {
+    const dt = Math.min(1 / 30, (t - lastFrame) / 1000 || 0);
+    lastFrame = t;
+
+    if (spinning) {
+      rot += av * dt;
+      av *= Math.exp(-CONFIG.spin.decay * dt);
+      if (av < CONFIG.spin.stopVel) finishSpin();
+    }
+
+    draw(dt);
+    requestAnimationFrame(frame);
+  }
+
+  /* ============================================================
+     AVATAR SPRITES (winner panel + numbered test slices)
+     ============================================================ */
+  function makeSprite(img, name, r, color) {
+    const col = color || colorFor(name);
+    const size = Math.max(8, Math.round((r * 2) / PIX));
+    const c = document.createElement("canvas");
+    c.width = size; c.height = size;
+    const g = c.getContext("2d");
+    g.imageSmoothingEnabled = false;
+    const c2 = size / 2;
+    g.save();
+    g.beginPath(); g.arc(c2, c2, c2 - 1, 0, Math.PI * 2); g.clip();
+    if (img) g.drawImage(img, 0, 0, size, size);
+    else {
+      g.fillStyle = col; g.fillRect(0, 0, size, size);
+      g.fillStyle = COL.bg;
+      g.font = "700 " + Math.ceil(size * 0.42) + "px " + MONO;
+      g.textAlign = "center"; g.textBaseline = "middle";
+      g.fillText(name.slice(0, 2).toUpperCase(), c2, c2 + 1);
+    }
+    g.restore();
+    g.strokeStyle = col; g.lineWidth = 1.5;
+    g.beginPath(); g.arc(c2, c2, c2 - 1, 0, Math.PI * 2); g.stroke();
+    return c;
+  }
+
+  function numberAvatar(num, color) {
+    const s = 32;
+    const c = document.createElement("canvas");
+    c.width = s; c.height = s;
+    const g = c.getContext("2d");
+    g.imageSmoothingEnabled = false;
+    g.fillStyle = color;
+    g.beginPath(); g.arc(s / 2, s / 2, s / 2, 0, Math.PI * 2); g.fill();
+    g.fillStyle = COL.bg;
+    g.font = "700 " + (num >= 100 ? 11 : num >= 10 ? 14 : 17) + "px " + MONO;
+    g.textAlign = "center"; g.textBaseline = "middle";
+    g.fillText(num, s / 2, s / 2 + 1);
+    return c.toDataURL();
+  }
+
+  function loadImage(url) {
+    return new Promise((resolve) => {
+      if (!url) return resolve(null);
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      const to = setTimeout(() => resolve(null), 6000);
+      img.onload = () => { clearTimeout(to); resolve(img); };
+      img.onerror = () => { clearTimeout(to); resolve(null); };
+      img.src = url;
+    });
+  }
+
+  /* ============================================================
+     BUTTONS + TEST RUNS
+     ============================================================ */
+  function setButtons(list, withTest) {
+    controlsEl.innerHTML = "";
+    for (const [label, cls, fn, disabled] of list) {
+      const b = document.createElement("button");
+      b.className = "btn " + (cls || "");
+      b.textContent = label;
+      b.disabled = !!disabled;
+      b.onclick = fn;
+      controlsEl.appendChild(b);
+    }
+    if (withTest) controlsEl.appendChild(testControls());
+  }
+
+  function testControls() {
+    const wrap = document.createElement("div");
+    wrap.className = "testwrap";
+    const inp = document.createElement("input");
+    inp.type = "number"; inp.min = 2; inp.max = CONFIG.maxPlayers; inp.value = testCount;
+    inp.title = "Number of test slices";
+    inp.onchange = () => {
+      testCount = Math.max(2, Math.min(CONFIG.maxPlayers, parseInt(inp.value) || 12));
+      inp.value = testCount;
+    };
+    const btn = document.createElement("button");
+    btn.className = "btn ghost";
+    btn.textContent = "▶ TEST SPIN";
+    btn.onclick = testRun;
+    wrap.append(inp, btn);
+    return wrap;
+  }
+
+  function idleButtons() {
+    setButtons(auth || DEMO ? [["GATHER CHATTERS", "on", gather]] : [], true);
+    if (!auth && !DEMO) gateEl.style.display = "";
+  }
+
+  function testPlayers(n) {
+    return Array.from({ length: n }, (_, i) => {
+      const color = PALETTE[i % PALETTE.length];
+      return { login: "test-" + (i + 1), name: "#" + (i + 1), color,
+               avatar: numberAvatar(i + 1, color), img: null };
+    });
+  }
+
+  async function testRun() {
+    if (spinning || phase === "gathering") return;
+    testMode = true;
+    gateEl.style.display = "none";
+    winnerEl.classList.remove("show");
+    hideLeaderboard();
+    players = testPlayers(testCount);
+    await Promise.all(players.map(async (p) => { p.img = await loadImage(p.avatar); }));
+    phase = "ready";
+    spin();
+  }
+
+  /* ============================================================
+     GAME FLOW
+     ============================================================ */
+  async function gather() {
+    phase = "gathering";
+    testMode = DEMO;
+    winnerIdx = -1;
+    winnerEl.classList.remove("show");
+    hideLeaderboard();
+    setButtons([["GATHERING…", "", () => {}, true]]);
+    setStatus("gathering chatters…", "");
+
+    try {
+      players = DEMO ? demoPlayers() : await fetchPlayers();
+    } catch (err) {
+      console.error(err);
+      setStatus("couldn't fetch chatters — see console", "err");
+      phase = "idle"; idleButtons();
+      return;
+    }
+
+    if (players.length < 2) {
+      setStatus("need at least 2 people in chat!", "err", 4000);
+      phase = "idle"; idleButtons();
+      return;
+    }
+
+    setStatus("loading avatars…", "");
+    await Promise.all(players.map(async (p) => { p.img = await loadImage(p.avatar); }));
+
+    phase = "ready";
+    setStatus(players.length + " on the wheel", "", 3000);
+    setButtons([
+      ["SPIN", "on", spin],
+      ["REGATHER", "ghost", gather],
+    ], true);
+    if (AUTO) spin();
+  }
+
+  /* ============================================================
+     PAYOUTS — StreamElements loyalty points (optional)
+     ============================================================ */
+  async function awardPoints(win) {
+    const P = CONFIG.points;
+    if (testMode || !P.streamElementsChannelId || !P.streamElementsJWT) return false;
+    try {
+      const r = await fetch("https://api.streamelements.com/kappa/v2/points/"
+          + P.streamElementsChannelId + "/" + encodeURIComponent(win.login) + "/" + P.award,
+        { method: "PUT", headers: { Authorization: "Bearer " + P.streamElementsJWT } });
+      if (!r.ok) throw new Error("StreamElements " + r.status + ": " + (await r.text()));
+      setStatus("points paid out", "", 5000);
+      return true;
+    } catch (err) {
+      console.error("Point payout failed:", err);
+      setStatus("point payout failed — see console", "err", 6000);
+      return false;
+    }
+  }
+
+  /* ============================================================
+     LEADERBOARD (persists in localStorage across streams)
+     ============================================================ */
+  function loadLB() { try { return JSON.parse(localStorage.getItem(lbKey())) || {}; } catch { return {}; } }
+  function saveLB(lb) { try { localStorage.setItem(lbKey(), JSON.stringify(lb)); } catch {} }
+
+  function updateLeaderboard(winner) {
+    const lb = loadLB();
+    for (const p of players) {
+      const rec = lb[p.login] || { name: p.name, avatar: p.avatar, wins: 0, spins: 0 };
+      rec.name = p.name; rec.avatar = p.avatar; rec.color = p.color || null;
+      rec.spins += 1;
+      if (p === winner) rec.wins += 1;
+      lb[p.login] = rec;
+    }
+    saveLB(lb);
+  }
+
+  function renderLeaderboard() {
+    const lb = loadLB();
+    const rows = Object.values(lb)
+      .sort((a, b) => b.wins - a.wins || b.spins - a.spins)
+      .slice(0, 10);
+
+    lbEl.innerHTML =
+      '<div class="strip"><span class="sq"></span>' +
+      (testMode ? "TEST LEADERBOARD" : "LEADERBOARD") +
+      '</div><div class="rows"></div>';
+    const rowsEl = lbEl.querySelector(".rows");
+
+    if (rows.length === 0) rowsEl.insertAdjacentHTML("beforeend", '<div class="none">NO SPINS YET.</div>');
+    rows.forEach((r, i) => {
+      const row = document.createElement("div");
+      row.className = "row";
+      const im = document.createElement("img");
+      if (r.avatar) im.src = r.avatar;
+      im.style.background = r.color || colorFor(r.name);
+      const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = r.name;
+      nm.style.color = r.color || colorFor(r.name);
+      const wins = document.createElement("span"); wins.className = "wins"; wins.textContent = r.wins + "W";
+      const pts = document.createElement("span"); pts.className = "pts"; pts.textContent = r.spins + " spins";
+      const rank = document.createElement("span"); rank.className = "rank";
+      rank.textContent = String(i + 1).padStart(2, "0");
+      row.append(rank, im, nm, wins, pts);
+      rowsEl.appendChild(row);
+    });
+
+    const foot = document.createElement("div");
+    foot.className = "foot";
+    const reset = document.createElement("button");
+    reset.className = "btn ghost lbreset";
+    reset.textContent = "RESET LEADERBOARD";
+    let armTimer = null;
+    reset.onclick = () => {
+      if (!reset.classList.contains("arm")) {
+        reset.classList.add("arm");
+        reset.textContent = "CLICK AGAIN TO ERASE";
+        armTimer = setTimeout(() => { reset.classList.remove("arm"); reset.textContent = "RESET LEADERBOARD"; }, 3000);
+        return;
+      }
+      clearTimeout(armTimer);
+      try { localStorage.removeItem(lbKey()); } catch {}
+      renderLeaderboard();
+    };
+    foot.appendChild(reset);
+    lbEl.appendChild(foot);
+  }
+
+  function showLeaderboard() { renderLeaderboard(); lbEl.classList.add("show"); }
+  function hideLeaderboard() { lbEl.classList.remove("show"); }
+  lbToggle.onclick = () => (lbEl.classList.contains("show") ? hideLeaderboard() : showLeaderboard());
+
+  /* ============================================================
+     TWITCH — OAuth (implicit flow) + chatters + profile pictures
+     ============================================================ */
+  let auth = null;
+
+  async function fetchPlayers() {
+    const headers = { "Client-Id": CONFIG.clientId, Authorization: "Bearer " + auth.token };
+    let chatters = [], cursor = null;
+    do {
+      const u = new URL("https://api.twitch.tv/helix/chat/chatters");
+      u.searchParams.set("broadcaster_id", auth.userId);
+      u.searchParams.set("moderator_id", auth.userId);
+      u.searchParams.set("first", "1000");
+      if (cursor) u.searchParams.set("after", cursor);
+      const r = await fetch(u, { headers });
+      if (!r.ok) throw new Error("chatters " + r.status + ": " + (await r.text()));
+      const j = await r.json();
+      chatters = chatters.concat(j.data);
+      cursor = j.pagination && j.pagination.cursor;
+    } while (cursor && chatters.length < CONFIG.maxPlayers);
+
+    chatters = chatters
+      .filter((c) => !CONFIG.ignore.includes(c.user_login.toLowerCase()))
+      .slice(0, CONFIG.maxPlayers);
+
+    const byId = new Map();
+    for (let i = 0; i < chatters.length; i += 100) {
+      const u = new URL("https://api.twitch.tv/helix/users");
+      for (const c of chatters.slice(i, i + 100)) u.searchParams.append("id", c.user_id);
+      const r = await fetch(u, { headers });
+      if (!r.ok) throw new Error("users " + r.status);
+      for (const usr of (await r.json()).data) byId.set(usr.id, usr);
+    }
+
+    return chatters.map((c) => {
+      const usr = byId.get(c.user_id);
+      return {
+        login: c.user_login,
+        name: c.user_name || c.user_login,
+        avatar: usr ? usr.profile_image_url.replace("300x300", "150x150") : "",
+        img: null,
+      };
+    });
+  }
+
+  function demoPlayers() {
+    const names = ["PixelWizard","NightOwl_42","GlitchQueen","TurboSnail","LoafOfBread","xX_Slayer_Xx",
+      "CozyRaccoon","ByteMe2","QuantumDuck","SirLagsALot","MoonMoth","CtrlAltDefeat","NoScopeNana",
+      "PogChampion","SleepyKoala","VoidWalker","CheeseLord","RGBGoblin","AFKForever","TeapotTempest",
+      "BasementDweller","StarFisher","GrumpyCloud","MechaPigeon","SaltMiner","DiceGoblin","LurkerPrime",
+      "HypeTrainCond","BitBandit","EmoteSpammer","ChatGremlin","VODWatcher","ModHammer","SubGifter9000"];
+    const n = Math.max(2, Math.min(CONFIG.maxPlayers, parseInt(params.get("count")) || 16));
+    return Array.from({ length: n }, (_, i) => {
+      const name = names[i % names.length] + (i >= names.length ? "_" + i : "");
+      return { login: name.toLowerCase(), name, avatar: "", img: null };
+    });
+  }
+
+  async function boot() {
+    applyPalette();
+    buildFx();
+    installHotkeys();
+    rebuild();
+    requestAnimationFrame(frame);
+
+    if (DEMO) {
+      setStatus("DEMO MODE", "");
+      phase = "idle";
+      gather();
+      return;
+    }
+
+    if (location.hash.includes("access_token")) {
+      const h = new URLSearchParams(location.hash.slice(1));
+      const tok = h.get("access_token");
+      if (tok && h.get("state") === sessionStorage.getItem("whl:state")) {
+        localStorage.setItem(TOKEN_KEY, tok);
+      }
+      history.replaceState(null, "", REDIRECT + location.search);
+    }
+
+    if (!CONFIG.clientId) { showGate("no-client"); return; }
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (!token) { showGate("connect"); phase = "idle"; idleButtons(); return; }
+
+    try {
+      const r = await fetch("https://id.twitch.tv/oauth2/validate", {
+        headers: { Authorization: "OAuth " + token },
+      });
+      if (!r.ok) throw new Error("invalid");
+      const me = await r.json();
+      auth = { token, userId: me.user_id, login: me.login };
+    } catch {
+      localStorage.removeItem(TOKEN_KEY);
+      showGate("connect", "Session expired — reconnect.");
+      phase = "idle"; idleButtons();
+      return;
+    }
+
+    gateEl.style.display = "none";
+    setStatus(auth.login, "", 3000);
+    phase = "idle";
+    idleButtons();
+    if (AUTO) gather();
+  }
+
+  function showGate(mode, note) {
+    gateEl.style.display = "";
+    if (mode === "no-client") {
+      gateEl.innerHTML =
+        '<div class="strip"><span class="sq"></span>SETUP REQUIRED</div>' +
+        '<div class="inner">' +
+        '<p>Add your Twitch <strong>Client ID</strong> to <code>CONFIG.clientId</code> in this file, ' +
+        'and register this redirect URL on your Twitch app:</p>' +
+        '<p><code>' + REDIRECT + '</code></p></div>';
+      return;
+    }
+    gateEl.innerHTML =
+      '<div class="strip"><span class="sq"></span>CONNECT TWITCH</div>' +
+      '<div class="inner">' +
+      '<p>' + (note || "Authorize once so the wheel can see who's in chat and grab their profile pictures.") + '</p>' +
+      '<p>Make sure <code>' + REDIRECT + '</code> is registered as an OAuth Redirect URL on your Twitch app.</p>' +
+      '</div>';
+    const btn = document.createElement("button");
+    btn.className = "btn on";
+    btn.textContent = "CONNECT TWITCH";
+    btn.onclick = login;
+    btn.style.margin = "0 12px 14px";
+    gateEl.appendChild(btn);
+  }
+
+  function login() {
+    const state = Math.random().toString(36).slice(2);
+    sessionStorage.setItem("whl:state", state);
+    location.href = "https://id.twitch.tv/oauth2/authorize"
+      + "?response_type=token"
+      + "&client_id=" + encodeURIComponent(CONFIG.clientId)
+      + "&redirect_uri=" + encodeURIComponent(REDIRECT)
+      + "&scope=" + encodeURIComponent(CONFIG.scopes.join(" "))
+      + "&state=" + state;
+  }
+
+  /* ============================================================
+     VISUALS CONSOLE (press H). Persists in localStorage.
+     ============================================================ */
+  function toggleFx(force) {
+    const show = force === undefined ? !fxEl.classList.contains("show") : force;
+    fxEl.classList.toggle("show", show);
+    fxToggle.style.display = show ? "none" : "";
+    vis.fxOpen = show; saveVis();
+  }
+
+  function buildFx() {
+    fxEl.innerHTML =
+      '<div class="strip"><span class="sq"></span>VISUALS<button class="x" title="Hide (H)">×</button></div>' +
+      '<div class="grp">RENDER</div>' +
+      '<div class="ctl" data-c="pix"><div class="lr"><span>PIXEL SIZE</span><span class="val"></span></div>' +
+        '<input type="range" min="1" max="12" step="1"></div>' +
+      '<div class="ctl" data-c="labelScale"><div class="lr"><span>LABEL SIZE</span><span class="val"></span></div>' +
+        '<input type="range" min="0.5" max="1.5" step="0.05"></div>' +
+      '<div class="ctl" data-c="glow"><div class="lr"><span>WIN GLOW</span><span class="val"></span></div>' +
+        '<input type="range" min="0" max="1.5" step="0.05"></div>' +
+      '<div class="togglerow">' +
+        '<button class="btn" data-t="perfect">PIXEL-PERFECT</button>' +
+        '<button class="btn" data-t="alpha">ALPHA BG</button>' +
+      '</div>' +
+      '<div class="grp">PALETTE</div>' +
+      '<div class="pals"></div>' +
+      '<div class="foot"><span class="hint">H HIDE · SPACE SPIN · F FULL</span><button class="btn" data-reset>RESET</button></div>';
+
+    const fmtVal = { pix: v => String(v), labelScale: v => "×" + v.toFixed(2), glow: v => Math.round(v * 100) + "%" };
+    fxEl.querySelectorAll(".ctl").forEach(row => {
+      const key = row.dataset.c;
+      const rng = row.querySelector("input");
+      const val = row.querySelector(".val");
+      rng.value = vis[key];
+      val.textContent = fmtVal[key](vis[key]);
+      rng.oninput = () => {
+        vis[key] = parseFloat(rng.value);
+        val.textContent = fmtVal[key](vis[key]);
+        saveVis();
+        if (key === "pix") { PIX = vis.pix; rebuild(); }
+      };
+    });
+
+    fxEl.querySelectorAll(".togglerow .btn").forEach(btn => {
+      const key = btn.dataset.t;
+      btn.classList.toggle("on", !!vis[key]);
+      btn.onclick = () => {
+        vis[key] = !vis[key];
+        btn.classList.toggle("on", vis[key]);
+        saveVis();
+        if (key === "alpha") { ALPHA = vis.alpha; applyPalette(); }
+        if (key === "perfect") rebuild();
+      };
+    });
+
+    const pals = fxEl.querySelector(".pals");
+    PALETTES.forEach((p, i) => {
+      const cell = document.createElement("div");
+      cell.className = "palc" + (i === vis.palette ? " sel" : "");
+      cell.title = p.name;
+      cell.innerHTML =
+        '<span style="background:' + p.bg + '"></span>' +
+        '<span style="background:' + p.blob + '"></span>' +
+        '<span style="background:' + p.dot + '"></span>';
+      cell.onclick = () => {
+        vis.palette = i; saveVis(); applyPalette();
+        pals.querySelectorAll(".palc").forEach((e, j) => e.classList.toggle("sel", j === i));
+      };
+      pals.appendChild(cell);
+    });
+
+    fxEl.querySelector(".x").onclick = () => toggleFx(false);
+    fxEl.querySelector("[data-reset]").onclick = () => {
+      const wasOpen = vis.fxOpen;
+      vis = { ...VIS_DEFAULT, fxOpen: wasOpen }; saveVis();
+      PIX = vis.pix; ALPHA = vis.alpha;
+      applyPalette(); buildFx(); rebuild();
+    };
+    fxToggle.onclick = () => toggleFx(true);
+
+    toggleFx(vis.fxOpen !== false);
+  }
+
+  function installHotkeys() {
+    window.addEventListener("keydown", (e) => {
+      const tag = e.target && e.target.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      const k = e.key.toLowerCase();
+      if (k === "h") { toggleFx(); e.preventDefault(); }
+      else if (k === " ") { if (phase === "ready" || phase === "done") spin(); e.preventDefault(); }
+      else if (k === "f") {
+        if (!document.fullscreenElement) document.documentElement.requestFullscreen && document.documentElement.requestFullscreen();
+        else document.exitFullscreen && document.exitFullscreen();
+      }
+    });
+  }
+
+  boot();
+  </script>
+</body>
+</html>
