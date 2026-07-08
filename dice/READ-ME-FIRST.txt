@@ -1,0 +1,57 @@
+1-BIT DICE - OBS Overlay / Applet
+=================================
+
+WHAT THIS IS
+  A wireframe 3D dice roller in the 1-bit field-system style. Rolls
+  anything from a coin (d2) up to a d100, tumbling polyhedra that come
+  to rest showing the result. Standalone - no Twitch login needed.
+  Sibling of the Plinko and Wheel elements (same look + FX console).
+
+WHAT'S IN THIS FOLDER
+  dice.html          - the whole applet (the only important file)
+  READ-ME-FIRST.txt  - this file
+
+HOW TO USE IN OBS
+  1. Start the same local server the other overlays use
+     (double-click start-windows.bat in the folder above this one).
+  2. Add a "Browser Source":
+       - URL:    http://localhost:8777/dice/dice.html
+       - Width:  1920    Height: 1080
+  3. Right-click the source -> Interact to press ROLL / move sliders.
+  (No login step - this applet doesn't touch Twitch.)
+
+CONTROLS (bottom "DICE" panel)
+  - FACES         : a slider that cycles through the polyhedra -
+                    d2 (coin/cylinder), d4, d6, d8, d10, d12, d20, d100.
+  - NUMBER OF DICE : 1 to 8 dice at once; they roll together and the
+                    total (with the breakdown) shows in the top readout.
+  - ROLL          : tumbles every die; each settles with its result
+                    face turned up toward you. (Or press SPACE.)
+
+  Faces carry wireframe (outlined) numbers. The die is solid - not see-
+  through - so the back edges are hidden and the front numbers stay
+  readable. The classic d6 uses pips (dots) instead of a numeral. The
+  landed result face is drawn a little bolder, and the readout up top
+  always shows the exact value + total.
+
+VISUALS CONSOLE (the "FX" panel, top-left)
+  Press H to hide/show it. Everything is remembered across refreshes.
+    - PIXEL SIZE    : chunkiness of the pixels (1-12). Also the main
+                      performance lever. 1 = crispest full-res look.
+    - PIXEL-PERFECT : integer scaling so nearest-neighbor stays sharp
+                      (a few pixels of letterbox at the edges is normal).
+    - ALPHA BG      : transparent background for layering in OBS. The
+                      dice themselves stay solid; only the empty space
+                      around them becomes see-through.
+    - PALETTE       : EMBER, PHOSPHOR, MONO, DMG, ICE, MAGMA, PAPER.
+    - RESET         : restore all visual settings to defaults.
+  Keys: H = console, SPACE = roll, F = fullscreen.
+
+TIPS
+  - ?d=20 and ?n=3 preset the die type and how many, e.g.
+        http://localhost:8777/dice/dice.html?d=20&n=3
+  - ?px=4 and ?alpha=1 set the starting pixel size / transparency,
+    but the FX console is the easier way to tune both.
+  - The d100 is a Zocchihedron-style faceted globe (100 faces). Only
+    the faces near you are big enough to read - the exact roll is
+    always shown in the readout at the top.
