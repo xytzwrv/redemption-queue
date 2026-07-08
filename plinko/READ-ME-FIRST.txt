@@ -36,6 +36,28 @@ HOW TO PLAY (all buttons are clicked via OBS "Interact")
   - "Reset leaderboard" is at the bottom of the leaderboard panel.
     Click it twice (it asks you to confirm) to wipe the standings.
 
+VISUALS CONSOLE (the "FX" panel, top-left)
+  Live sliders to tune how the board renders. Press H to hide/show it
+  (hide it before you go live), or click the FX button / the x. Every
+  setting is remembered across refreshes.
+    - PIXEL SIZE  : chunkiness of the pixels (1-12). This is also the
+                    main performance lever - larger = coarser + faster.
+                    Set it to 1 for the crispest, full-resolution look.
+    - PIXEL-PERFECT : keeps every pixel an exact whole-number size so
+                    nearest-neighbor scaling stays sharp (no uneven
+                    blocks). Leave it on for a clean desktop render; a
+                    few pixels of letterbox at the edges is normal and
+                    fills with the field color. Turn it off to stretch
+                    edge-to-edge if you'd rather have no border.
+    - BALL SIZE   : scales the avatars (applies on the next drop).
+    - PEG GLOW    : how strong the peg hit-flash is (0 = off).
+    - ALPHA BG    : makes the background transparent so the board can
+                    layer over other OBS sources.
+    - PALETTE     : swap the 3-color scheme (EMBER, PHOSPHOR, MONO,
+                    DMG, ICE, MAGMA, PAPER).
+    - RESET       : restore all visual settings to defaults.
+  Keys: H = hide/show console, F = fullscreen.
+
 TEST RUNS (no viewers needed)
   Next to the buttons there's a number box and "▶ Test run".
   Type how many balls you want and press it - you get numbered,
@@ -68,6 +90,8 @@ TIPS
         http://localhost:8777/plinko/plinko.html?demo=1
   - Add ?auto=1 to gather + drop automatically when the page loads
     (handy with an OBS "refresh browser source" hotkey).
+  - ?px=4 and ?alpha=1 set the starting pixel size / transparency,
+    but the FX console (above) is the easier way to tune both.
   - Up to 150 players per round (change maxPlayers in plinko.html).
   - Known chat bots (Nightbot etc.) are excluded automatically -
     edit the "ignore" list in plinko.html to add your own.
