@@ -271,7 +271,7 @@
         ?demo=1          fake players, no Twitch login needed
         ?demo=1&count=60 number of fake players
         ?auto=1          gather + drop automatically on page load
-        ?px=4            initial pixel size (1-12, default 3)
+        ?px=4            initial pixel size (1-12, default 1)
         ?alpha=1         start with ALPHA BG on (field pixels transparent)
 
      Press H in-page for the VISUALS console (pixel size, ball size,
@@ -309,7 +309,7 @@
 
   /* ---------- visual settings · live console + persisted ---------- */
   const VIS_KEY = "plk:visuals";
-  const VIS_DEFAULT = { pix: 3, ballScale: 1, glow: 1, perfect: true, alpha: false, palette: 0, fxOpen: true };
+  const VIS_DEFAULT = { pix: 1, ballScale: 1, glow: 1, perfect: true, alpha: false, palette: 0, fxOpen: true };
   function loadVis(){ try { return { ...VIS_DEFAULT, ...(JSON.parse(localStorage.getItem(VIS_KEY)) || {}) }; } catch { return { ...VIS_DEFAULT }; } }
   function saveVis(){ try { localStorage.setItem(VIS_KEY, JSON.stringify(vis)); } catch {} }
   let vis = loadVis();
