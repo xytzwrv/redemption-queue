@@ -4,36 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>1-BIT DICE — FIELD SYSTEM</title>
+<link rel="stylesheet" href="../shared/field.css">
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&display=swap');
-
-  /* ---------- 1-BIT FIELD SYSTEM · EMBER ---------- */
-  :root{
-    --bg:#140d00; --blob:#c05a00; --dot:#ffd27a; --dim:#6e4300;
-    --mono: ui-monospace,"Cascadia Mono",Menlo,Consolas,monospace;
-    --pix: 'Silkscreen', var(--mono);
-  }
-  *{ box-sizing:border-box; margin:0; padding:0; }
-  html, body{
-    height:100%; background:transparent;
-    font-family:var(--mono); font-size:13px; color:var(--dot);
-    overflow:hidden; -webkit-font-smoothing:none;
-  }
-  #board{ position:fixed; top:0; left:0; display:block;
-          image-rendering:pixelated; image-rendering:crisp-edges; }
-
-  .btn{
-    display:inline-flex; align-items:center; justify-content:center; gap:8px;
-    background:var(--bg); color:var(--dot); border:1px solid var(--dot);
-    font-family:var(--pix); font-size:10px; letter-spacing:1px;
-    padding:7px 12px; cursor:pointer; text-transform:uppercase;
-  }
-  .btn:hover, .btn.on{ background:var(--dot); color:var(--bg); }
-  .btn.ghost{ border-color:var(--dim); opacity:.75; }
-  .btn.ghost:hover{ background:var(--dot); color:var(--bg); opacity:1; }
-  .btn:disabled{ opacity:.4; cursor:default; }
-  .btn:disabled:hover{ background:var(--bg); color:var(--dot); }
-
   /* ---------- result readout (top center) ---------- */
   #readout{
     position:fixed; top:16px; left:50%; transform:translateX(-50%); z-index:20;
@@ -72,50 +44,6 @@
   #dice input[type=range]::-moz-range-track{ height:11px; background:var(--bg); border:1px solid var(--dot); box-sizing:border-box; }
   #dice input[type=range]::-moz-range-thumb{ width:7px; height:9px; background:var(--dot); border:0; border-radius:0; }
   #dice .roll{ margin:8px 12px 12px; width:calc(100% - 24px); padding:10px; font-size:12px; }
-
-  /* ---------- visuals console ---------- */
-  #fxToggle{
-    position:fixed; top:16px; left:16px; z-index:20;
-    background:var(--bg); color:var(--dot); border:1px solid var(--dot);
-    font-family:var(--pix); font-size:10px; letter-spacing:1px;
-    width:38px; height:32px; cursor:pointer; padding:0;
-  }
-  #fxToggle:hover{ background:var(--dot); color:var(--bg); }
-  #fx{
-    position:fixed; top:16px; left:16px; width:236px; z-index:26;
-    display:none; flex-direction:column;
-    background:var(--bg); border:1px solid var(--dot);
-    max-height:calc(100vh - 32px); overflow-y:auto;
-  }
-  #fx.show{ display:flex; }
-  #fx .strip{
-    position:sticky; top:0; background:var(--bg);
-    display:flex; align-items:center; gap:8px; padding:8px 12px;
-    border-bottom:1px solid var(--dot);
-    font-family:var(--pix); font-size:10px; letter-spacing:2px;
-  }
-  #fx .strip .sq{ width:6px; height:6px; background:var(--dot); }
-  #fx .strip .x{ margin-left:auto; background:none; border:0; color:var(--dot); font-family:var(--mono); font-size:14px; cursor:pointer; padding:0 2px; }
-  #fx .strip .x:hover{ color:var(--blob); }
-  #fx .grp{ padding:10px 12px 2px; border-top:1px solid var(--dim); font-family:var(--pix); font-size:9px; letter-spacing:1.5px; opacity:.55; }
-  #fx .grp:first-of-type{ border-top:0; }
-  #fx .ctl{ padding:6px 12px 10px; }
-  #fx .ctl .lr{ display:flex; justify-content:space-between; align-items:baseline; font-family:var(--pix); font-size:9px; letter-spacing:1px; margin-bottom:5px; }
-  #fx .ctl .lr .val{ font-family:var(--mono); font-size:11px; color:var(--dot); }
-  #fx input[type=range]{ -webkit-appearance:none; appearance:none; width:100%; height:11px; background:transparent; display:block; }
-  #fx input[type=range]::-webkit-slider-runnable-track{ height:11px; background:var(--bg); border:1px solid var(--dot); }
-  #fx input[type=range]::-webkit-slider-thumb{ -webkit-appearance:none; width:7px; height:9px; margin-top:1px; background:var(--dot); }
-  #fx input[type=range]::-moz-range-track{ height:11px; background:var(--bg); border:1px solid var(--dot); box-sizing:border-box; }
-  #fx input[type=range]::-moz-range-thumb{ width:7px; height:9px; background:var(--dot); border:0; border-radius:0; }
-  #fx .togglerow{ display:flex; gap:8px; padding:2px 12px 10px; flex-wrap:wrap; }
-  #fx .togglerow .btn{ flex:1; font-size:9px; padding:5px 8px; }
-  #fx .pals{ display:grid; grid-template-columns:repeat(4,1fr); gap:5px; padding:2px 12px 12px; }
-  #fx .palc{ height:20px; border:1px solid var(--dim); display:flex; cursor:pointer; }
-  #fx .palc.sel{ border-color:var(--dot); outline:1px solid var(--dot); outline-offset:-3px; }
-  #fx .palc span{ flex:1; }
-  #fx .foot{ border-top:1px solid var(--dim); padding:8px 12px; display:flex; justify-content:space-between; align-items:center; gap:8px; }
-  #fx .foot .hint{ font-family:var(--pix); font-size:8px; letter-spacing:1px; opacity:.5; }
-  #fx .foot .btn{ font-size:9px; padding:4px 8px; }
 </style>
 </head>
 <body>
@@ -131,6 +59,7 @@
   <button id="fxToggle" title="Visual console (H)">FX</button>
   <div id="fx"></div>
 
+  <script src="../shared/field.js"></script>
   <script>
   /* ================================================================
      1-BIT DICE — wireframe 3D polyhedral dice. Solid (not see-through)
@@ -148,47 +77,14 @@
      ================================================================ */
   const DICE_SIDES = [2, 4, 6, 8, 10, 12, 20, 100];   // slider cycles these
   const params = new URLSearchParams(location.search);
-  const ALPHA_URL = params.get("alpha") === "1";
-
-  /* ---------- visual settings · persisted ---------- */
-  const VIS_KEY = "dice:visuals";
-  const VIS_DEFAULT = { pix: 1, perfect: true, alpha: false, palette: 0, fxOpen: true, faces: 2, count: 1 };
-  function loadVis(){ try { return { ...VIS_DEFAULT, ...(JSON.parse(localStorage.getItem(VIS_KEY)) || {}) }; } catch { return { ...VIS_DEFAULT }; } }
-  function saveVis(){ try { localStorage.setItem(VIS_KEY, JSON.stringify(vis)); } catch {} }
-  let vis = loadVis();
-  if (params.get("px"))  vis.pix = Math.max(1, Math.min(12, parseInt(params.get("px")) || vis.pix));
-  if (ALPHA_URL)         vis.alpha = true;
-  if (params.get("d"))   { const i = DICE_SIDES.indexOf(parseInt(params.get("d"))); if (i >= 0) vis.faces = i; }
-  if (params.get("n"))   vis.count = Math.max(1, Math.min(8, parseInt(params.get("n")) || vis.count));
-  let PIX = vis.pix, ALPHA = vis.alpha;
-
-  const canvas = document.getElementById("board");
-  const ctx = canvas.getContext("2d");
   const diceEl = document.getElementById("dice");
-  const fxEl = document.getElementById("fx");
-  const fxToggle = document.getElementById("fxToggle");
   const readoutEl = document.getElementById("readout");
 
-  /* ---------- palettes ---------- */
-  const PALETTES = [
-    { name:"EMBER",    bg:"#140d00", blob:"#c05a00", dot:"#ffd27a", dim:"#6e4300" },
-    { name:"PHOSPHOR", bg:"#06120a", blob:"#1f7a3d", dot:"#b6ff7a", dim:"#0d3d1f" },
-    { name:"MONO",     bg:"#000000", blob:"#6e6e6e", dot:"#ffffff", dim:"#3a3a3a" },
-    { name:"DMG",      bg:"#0f380f", blob:"#306230", dot:"#9bbc0f", dim:"#1e4a1e" },
-    { name:"ICE",      bg:"#00121a", blob:"#1c6f8c", dot:"#7fdfff", dim:"#0a3646" },
-    { name:"MAGMA",    bg:"#180008", blob:"#a01f3c", dot:"#ff8fae", dim:"#50101e" },
-    { name:"PAPER",    bg:"#e8e4d8", blob:"#b7ac90", dot:"#151008", dim:"#a89d80" },
-  ];
-  let COL = { bg:"#140d00", blob:"#c05a00", dot:"#ffd27a", dim:"#6e4300" };
-  function applyPalette(){
-    const p = PALETTES[vis.palette] || PALETTES[0];
-    COL = { bg:p.bg, blob:p.blob, dot:p.dot, dim:p.dim };
-    const r = document.documentElement.style;
-    r.setProperty("--bg", p.bg); r.setProperty("--blob", p.blob);
-    r.setProperty("--dot", p.dot); r.setProperty("--dim", p.dim);
-    document.documentElement.style.background = vis.alpha ? "transparent" : p.bg;
-  }
-  const MONO = 'ui-monospace,"Cascadia Mono",Menlo,Consolas,monospace';
+  // Field owns the palette / pixel-perfect canvas / vis / FX console; these
+  // locals mirror it and are refreshed by sync() (called each frame + on change).
+  let W = 0, H = 0, PIX = 1, ALPHA = false, COL = null, ctx = null, canvas = null, vis = null, MONO = "";
+  function sync(){ W=Field.W; H=Field.H; PIX=Field.PIX; ALPHA=Field.ALPHA; COL=Field.COL; ctx=Field.ctx; canvas=Field.canvas; vis=Field.vis; MONO=Field.MONO; }
+  const saveVis = () => Field.saveVis();
 
   /* ============================================================
      VECTOR + QUATERNION MATH
@@ -356,29 +252,7 @@
   /* ============================================================
      BOARD — low-res pixel canvas, pixel-perfect integer scaling
      ============================================================ */
-  let W = 0, H = 0;
   const CAM = 4.2;                 // camera distance along +z (viewer)
-
-  function rebuild(){
-    const iw = window.innerWidth, ih = window.innerHeight;
-    if (vis.perfect){
-      const cols = Math.max(1, Math.floor(iw / PIX)), rows = Math.max(1, Math.floor(ih / PIX));
-      W = cols * PIX; H = rows * PIX;
-      canvas.width = cols; canvas.height = rows;
-      canvas.style.width = W + "px"; canvas.style.height = H + "px";
-      canvas.style.left = Math.floor((iw - W)/2) + "px";
-      canvas.style.top  = Math.floor((ih - H)/2) + "px";
-    } else {
-      W = iw; H = ih;
-      canvas.width = Math.ceil(iw / PIX); canvas.height = Math.ceil(ih / PIX);
-      canvas.style.width = "100%"; canvas.style.height = "100%";
-      canvas.style.left = "0"; canvas.style.top = "0";
-    }
-    ctx.setTransform(1/PIX, 0, 0, 1/PIX, 0, 0);
-    ctx.imageSmoothingEnabled = false;
-    layout();
-  }
-  window.addEventListener("resize", rebuild);
 
   /* ============================================================
      DICE INSTANCES
@@ -553,6 +427,7 @@
 
   let lastFrame = 0;
   function frame(t){
+    sync();
     const dt = Math.min(1/30, (t - lastFrame)/1000 || 0);
     lastFrame = t;
     for (const d of dice) updateDie(d, dt);
@@ -608,91 +483,25 @@
   }
 
   /* ============================================================
-     VISUALS CONSOLE (press H)
+     BOOT — Field owns the palette / canvas / FX console / hotkeys.
      ============================================================ */
-  function toggleFx(force){
-    const show = force === undefined ? !fxEl.classList.contains("show") : force;
-    fxEl.classList.toggle("show", show);
-    fxToggle.style.display = show ? "none" : "";
-    vis.fxOpen = show; saveVis();
-  }
+  Field.create({
+    prefix: "dice",
+    visDefaults: { faces: 2, count: 1 },
+    hint: "H HIDE · SPACE ROLL · F FULL",
+    onResize: () => { sync(); layout(); },
+    onControl: (key) => { sync(); if (key === "reset"){ buildDicePanel(); buildDice(); } },
+    keys: { " ": () => roll() },
+  });
+  sync();
 
-  function buildFx(){
-    fxEl.innerHTML =
-      '<div class="strip"><span class="sq"></span>VISUALS<button class="x" title="Hide (H)">×</button></div>' +
-      '<div class="grp">RENDER</div>' +
-      '<div class="ctl" data-c="pix"><div class="lr"><span>PIXEL SIZE</span><span class="val"></span></div>' +
-        '<input type="range" min="1" max="12" step="1"></div>' +
-      '<div class="togglerow">' +
-        '<button class="btn" data-t="perfect">PIXEL-PERFECT</button>' +
-        '<button class="btn" data-t="alpha">ALPHA BG</button>' +
-      '</div>' +
-      '<div class="grp">PALETTE</div>' +
-      '<div class="pals"></div>' +
-      '<div class="foot"><span class="hint">H HIDE · SPACE ROLL · F FULL</span><button class="btn" data-reset>RESET</button></div>';
+  // dice-specific URL flags (applied after Field has loaded vis)
+  if (params.get("d")){ const i = DICE_SIDES.indexOf(parseInt(params.get("d"))); if (i >= 0) vis.faces = i; }
+  if (params.get("n")) vis.count = Math.max(1, Math.min(8, parseInt(params.get("n")) || vis.count));
 
-    const row = fxEl.querySelector('[data-c="pix"]');
-    const rng = row.querySelector("input"), val = row.querySelector(".val");
-    rng.value = vis.pix; val.textContent = String(vis.pix);
-    rng.oninput = () => { vis.pix = parseInt(rng.value); val.textContent = String(vis.pix); PIX = vis.pix; saveVis(); rebuild(); };
-
-    fxEl.querySelectorAll(".togglerow .btn").forEach(btn => {
-      const key = btn.dataset.t;
-      btn.classList.toggle("on", !!vis[key]);
-      btn.onclick = () => {
-        vis[key] = !vis[key];
-        btn.classList.toggle("on", vis[key]);
-        saveVis();
-        if (key === "alpha"){ ALPHA = vis.alpha; applyPalette(); }
-        if (key === "perfect") rebuild();
-      };
-    });
-
-    const pals = fxEl.querySelector(".pals");
-    PALETTES.forEach((p, i) => {
-      const cell = document.createElement("div");
-      cell.className = "palc" + (i === vis.palette ? " sel" : "");
-      cell.title = p.name;
-      cell.innerHTML = '<span style="background:'+p.bg+'"></span><span style="background:'+p.blob+'"></span><span style="background:'+p.dot+'"></span>';
-      cell.onclick = () => { vis.palette = i; saveVis(); applyPalette(); pals.querySelectorAll(".palc").forEach((e,j)=>e.classList.toggle("sel", j===i)); };
-      pals.appendChild(cell);
-    });
-
-    fxEl.querySelector(".x").onclick = () => toggleFx(false);
-    fxEl.querySelector("[data-reset]").onclick = () => {
-      const wasOpen = vis.fxOpen, faces = vis.faces, count = vis.count;
-      vis = { ...VIS_DEFAULT, fxOpen: wasOpen, faces, count }; saveVis();
-      PIX = vis.pix; ALPHA = vis.alpha;
-      applyPalette(); buildFx(); rebuild();
-    };
-    fxToggle.onclick = () => toggleFx(true);
-    toggleFx(vis.fxOpen !== false);
-  }
-
-  function installHotkeys(){
-    window.addEventListener("keydown", (e) => {
-      const tag = e.target && e.target.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA") return;
-      const k = e.key.toLowerCase();
-      if (k === "h"){ toggleFx(); e.preventDefault(); }
-      else if (k === " "){ roll(); e.preventDefault(); }
-      else if (k === "f"){
-        if (!document.fullscreenElement) document.documentElement.requestFullscreen && document.documentElement.requestFullscreen();
-        else document.exitFullscreen && document.exitFullscreen();
-      }
-    });
-  }
-
-  function boot(){
-    applyPalette();
-    buildFx();
-    buildDicePanel();
-    installHotkeys();
-    rebuild();
-    buildDice();
-    requestAnimationFrame(frame);
-  }
-  boot();
+  buildDicePanel();
+  buildDice();
+  requestAnimationFrame(frame);
   </script>
 </body>
 </html>
