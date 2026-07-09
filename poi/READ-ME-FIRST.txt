@@ -1,0 +1,57 @@
+RANDOM POI SELECTOR - OBS Overlay
+=================================
+
+WHAT THIS IS
+  Pick an Apex Legends map, then spin a "random drop" selector: the
+  highlight flickers across the map's POIs fast, slows down, and lands
+  on one - then that POI's name is shown. All in the 1-bit field-system
+  style of the rest of the set. Standalone - no Twitch login needed.
+
+WHAT'S IN THIS FOLDER
+  poi.html           - the applet
+  READ-ME-FIRST.txt  - this file
+  (loads ../shared/field.js and ../shared/field.css)
+
+HOW TO USE IN OBS
+  1. Start the same local server the other overlays use
+     (double-click start-windows.bat in the folder above this one).
+  2. Add a "Browser Source":
+       - URL:    http://localhost:8777/poi/poi.html
+       - Width:  1920    Height: 1080
+  3. Right-click -> Interact to pick a map and press SELECT.
+
+HOW IT WORKS
+  - On load you get the MAP picker: four tiles, each a wireframe icon of
+    the map (its real coastline + POI dots) with the POI count. Click one.
+  - The map draws as a wireframe: the coastline outline plus every POI as
+    an identical diamond marker.
+  - SELECT POI (or SPACE) starts the roulette. It flickers across POIs
+    quickly, decelerates, and lands on one at random. The active/landed
+    POI carries a dithered glow; every other marker stays plain.
+  - The landed POI's name appears both on the map and big in the readout.
+  - SELECT AGAIN re-spins; CHANGE MAP reopens the picker.
+
+  Maps included: Kings Canyon (29 POIs), World's Edge (28), Olympus (36),
+  Storm Point (37). POI names + coastlines were derived from the labeled
+  SVG maps; anchors for World's Edge / Olympus / Storm Point are inferred
+  (Kings Canyon's are from Liquipedia marker coordinates).
+
+VISUALS CONSOLE (the "FX" panel, top-left)
+  Press H to hide/show it. Everything is remembered across refreshes.
+    - PIXEL SIZE    : chunkiness of the pixels (1-12). 1 = crispest.
+    - PIXEL-PERFECT : integer nearest-neighbor scaling (small edge
+                      letterbox is normal).
+    - ALPHA BG      : transparent background for layering in OBS.
+    - PALETTE       : EMBER, PHOSPHOR, MONO, DMG, ICE, MAGMA, PAPER.
+    - RESET         : restore defaults (also reopens the map picker).
+  Keys: H = console, SPACE = select, F = fullscreen.
+
+TIPS
+  - ?map=0..3 preselects a map (0 Kings Canyon ... 3 Storm Point).
+  - ?px=4 and ?alpha=1 set starting pixel size / transparency.
+
+NOTE ON THE SHARED LIBRARY
+  This element is built on shared/field.js + shared/field.css - the
+  common 1-bit "field system" runtime (palette, pixel-perfect canvas,
+  Bayer dither, FX console, hotkeys). Keep the poi/ folder next to the
+  shared/ folder so the ../shared/ paths resolve.
