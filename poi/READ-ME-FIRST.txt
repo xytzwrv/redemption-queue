@@ -23,13 +23,30 @@ HOW TO USE IN OBS
 HOW IT WORKS
   - On load you get the MAP picker: four tiles, each a wireframe icon of
     the map (its real coastline + POI dots) with the POI count. Click one.
-  - The map draws as a wireframe: the coastline outline plus every POI as
-    an identical diamond marker.
+  - The map draws as a wireframe: every POI is its own bordered region
+    (like the source SVG maps), all the same color.
   - SELECT POI (or SPACE) starts the roulette. It flickers across POIs
     quickly, decelerates, and lands on one at random. The active/landed
-    POI carries a dithered glow; every other marker stays plain.
+    POI has its WHOLE region filled with a Bayer-dithered glow; every
+    other region stays a plain wireframe.
   - The landed POI's name appears both on the map and big in the readout.
   - SELECT AGAIN re-spins; CHANGE MAP reopens the picker.
+
+LIVE MAP ROTATION (automatic)
+  On load, the overlay quietly asks apexlegendsapi.com which map is the
+  current public battle-royale rotation and selects it for you (if it's
+  one of the four here). This is invisible to viewers and the API key is
+  obfuscated in the file. Notes:
+    - It won't override a map you pick by hand (until the next reload).
+    - If the current map isn't one of the four (e.g. E-District), it just
+      leaves your last/selected map alone.
+    - ?mode=ranked follows the ranked rotation instead of pubs.
+    - Override or supply your own key with ?apexkey=YOURKEY or by setting
+      localStorage['poi:apexkey']; ?apexdebug=1 logs what it picked.
+    - Obfuscation is deterrence, not real secrecy — a key shipped in a
+      public page is technically extractable. For true privacy, proxy the
+      request through your own small server and point apexKey()/the fetch
+      URL at it instead.
 
   Maps included: Kings Canyon (29 POIs), World's Edge (28), Olympus (36),
   Storm Point (37). POI names + coastlines were derived from the labeled
