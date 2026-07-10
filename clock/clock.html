@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CLOCK — 1-BIT FIELD SYSTEM</title>
+<link rel="stylesheet" href="../shared/field.css">
+<style>
+  #cell{
+    position:fixed; top:50%; left:50%;
+    transform:translate(-50%,-50%) scale(1);
+    display:flex; flex-direction:column;
+    min-width:280px; z-index:20;
+  }
+  #cell .sec{ padding:14px 26px 16px; text-align:center; }
+  #cell .digits{
+    font-family:var(--pix); font-weight:700; letter-spacing:2px;
+    line-height:1; white-space:nowrap;
+  }
+  #cell .clock .digits{ font-size:clamp(30px,6.5vw,100px); }
+  #cell .stream .digits{ font-size:clamp(22px,4.6vw,72px); color:var(--blob); }
+  #cell .sub{
+    margin-top:8px; font-family:var(--mono); font-size:clamp(10px,1.15vw,14px);
+    letter-spacing:2px; color:var(--dot); opacity:.75;
+  }
+  #cell .colon{ animation:blink 1s steps(1) infinite; }
+  @keyframes blink{ 50%{ opacity:.35; } }
+
+  #cell .eyebrow{
+    display:flex; align-items:center; gap:8px;
+    padding:9px 26px 0; border-top:1px solid var(--dim);
+    font-family:var(--pix); font-size:9px; letter-spacing:2px; opacity:.55;
+  }
+  #cell .eyebrow .pill{
+    margin-left:auto; font-family:var(--pix); font-size:9px; letter-spacing:1px;
+    padding:2px 8px; border:1px solid var(--dim); opacity:1;
+  }
+  #cell .eyebrow .pill.live{ color:var(--dot); border-color:var(--dot); animation:blink 1.6s steps(2) infinite; }
+  #cell .eyebrow .pill.paused{ color:var(--dim); border-color:var(--dim); }
+
+  #controls{
+    position:fixed; bottom:16px; left:50%; transform:translateX(-50%);
+    display:flex; gap:8px; z-index:20; align-items:stretch;
+  }
+  .segwrap{ display:flex; gap:0; border:1px solid var(--dim); }
+  .segwrap .btn{ border:0; }
+  .segwrap .btn:first-child{ border-right:1px solid var(--dim); }
+</style>
+</head>
+<body>
+  <canvas id="board"></canvas>
+
+  <div id="cell" class="panel">
+    <div class="strip"><span class="sq"></span>LOCAL CLOCK</div>
+    <div class="sec clock">
+      <div class="digits" id="clockDigits">--:--:--</div>
+      <div class="sub" id="clockSub">— · —</div>
+    </div>
+    <div class="eyebrow">STREAM TIME<span class="pill" id="streamPill">—</span></div>
+    <div class="sec stream">
+      <div class="digits" id="streamDigits">00:00:00</div>
+    </div>
+  </div>
+
+  <div id="controls"></div>
+
+  <button id="fxToggle" title="Visual console (H)">FX</button>
+  <div id="fx"></div>
+
+  <script src="../shared/field.js"></script>
+  <script>
+  /* ================================================================
+     CLOCK — a digital local-time clock and a persistent "time spent
+     streaming" counter, boxed together in one bordered cell. Standalone,
+     no Twitch. Built on the shared field system (field.js / field.css).
+
+     The stream timer starts automatically the first time this page
+     loads (i.e. when you add the source at the start of your stream)
+     and survives OBS reloading the browser source, because its start
+     time is persisted in localStorage rather than kept only in memory.
+     Use RESET at the start of a new stream to zero it again.
+
+     URL flags:
+        ?format=12|24   starting clock format (default 24)
+        ?autostart=0    load the stream timer paused instead of running
+        ?reset=1        force the stream timer to zero on this load
+        ?px=N  ?alpha=1
+     Keys: SPACE start/pause the stream timer · H console · F fullscreen.
+     ================================================================ */
+  const params = new URLSearchParams(location.search);
+  const TIMER_KEY = "clock:timer";
+
+  const clockDigitsEl = document.getElementById("clockDigits");
+  const clockSubEl    = document.getElementById("clockSub");
+  const streamDigitsEl= document.getElementById("streamDigits");
+  const streamPillEl  = document.getElementById("streamPill");
+  const cellEl        = document.getElementById("cell");
+  const controlsEl    = document.getElementById("controls");
+
+  /* ---------- stream timer state · own persistence (survives FX reset) ---------- */
+  function loadTimer(){
+    try {
+      const saved = JSON.parse(localStorage.getItem(TIMER_KEY));
+      if (saved && typeof saved.accumMs === "number") return saved;
+    } catch {}
+    return null;
+  }
+  function saveTimer(){ try { localStorage.setItem(TIMER_KEY, JSON.stringify(timer)); } catch {} }
+
+  let timer = loadTimer();
+  if (!timer || params.get("reset") === "1") {
+    timer = { startedAt: Date.now(), accumMs: 0, running: params.get("autostart") !== "0", format24: true };
+  }
+  if (params.get("format") === "12") timer.format24 = false;
+  if (params.get("format") === "24") timer.format24 = true;
+  saveTimer();
+
+  function elapsedMs(){ return timer.accumMs + (timer.running ? (Date.now() - timer.startedAt) : 0); }
+
+  function toggleRun(){
+    const now = Date.now();
+    if (timer.running) { timer.accumMs += now - timer.startedAt; timer.running = false; }
+    else { timer.startedAt = now; timer.running = true; }
+    saveTimer(); setButtons(); updatePill();
+  }
+
+  function setFormat(is24){
+    if (timer.format24 === is24) return;
+    timer.format24 = is24; saveTimer(); setButtons();
+  }
+
+  /* ---------- controls (bottom bar, mirrors the rest of the set) ---------- */
+  function mkbtn(label, cls, fn){ const b=document.createElement("button"); b.className="btn "+(cls||""); b.textContent=label; b.onclick=fn; return b; }
+
+  function setButtons(){
+    controlsEl.innerHTML = "";
+    controlsEl.append(mkbtn(timer.running ? "PAUSE" : "RESUME", "on", toggleRun));
+
+    const reset = mkbtn("RESET TIMER", "ghost", null);
+    let armTimer = null;
+    reset.onclick = () => {
+      if (!reset.classList.contains("arm")) {
+        reset.classList.add("arm"); reset.textContent = "CLICK AGAIN TO ZERO";
+        armTimer = setTimeout(() => { reset.classList.remove("arm"); reset.textContent = "RESET TIMER"; }, 3000);
+        return;
+      }
+      clearTimeout(armTimer);
+      timer.accumMs = 0; timer.startedAt = Date.now(); saveTimer();
+      reset.classList.remove("arm"); reset.textContent = "RESET TIMER";
+    };
+    controlsEl.appendChild(reset);
+
+    const seg = document.createElement("div"); seg.className = "segwrap";
+    const b24 = mkbtn("24H", timer.format24 ? "on" : "", () => setFormat(true));
+    const b12 = mkbtn("12H", !timer.format24 ? "on" : "", () => setFormat(false));
+    seg.append(b24, b12);
+    controlsEl.appendChild(seg);
+  }
+  function updatePill(){
+    streamPillEl.textContent = timer.running ? "● LIVE" : "❚❚ PAUSED";
+    streamPillEl.className = "pill " + (timer.running ? "live" : "paused");
+  }
+
+  /* ---------- formatting ---------- */
+  const pad = (n, w) => String(n).padStart(w || 2, "0");
+
+  function clockStrings(){
+    const now = new Date();
+    let h = now.getHours(), ampm = "";
+    if (!timer.format24) { ampm = h >= 12 ? " PM" : " AM"; h = h % 12 || 12; }
+    const time = pad(h) + '<span class="colon">:</span>' + pad(now.getMinutes()) + '<span class="colon">:</span>' + pad(now.getSeconds()) + ampm;
+    const date = now.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" }).toUpperCase();
+    let tz = "";
+    try {
+      const parts = new Intl.DateTimeFormat(undefined, { timeZoneName: "short" }).formatToParts(now);
+      tz = (parts.find(p => p.type === "timeZoneName") || {}).value || "";
+    } catch {}
+    return { time, sub: date + (tz ? " · " + tz : "") };
+  }
+
+  function streamString(){
+    let s = Math.floor(elapsedMs() / 1000);
+    const h = Math.floor(s / 3600); s %= 3600;
+    const m = Math.floor(s / 60); s %= 60;
+    return pad(h) + ":" + pad(m) + ":" + pad(s);
+  }
+
+  /* ---------- tick loop — only touch the DOM when text actually changes ---------- */
+  let lastClock = "", lastSub = "", lastStream = "";
+  function tick(){
+    const c = clockStrings();
+    if (c.time !== lastClock) { clockDigitsEl.innerHTML = c.time; lastClock = c.time; }
+    if (c.sub !== lastSub) { clockSubEl.textContent = c.sub; lastSub = c.sub; }
+    const s = streamString();
+    if (s !== lastStream) { streamDigitsEl.textContent = s; lastStream = s; }
+    requestAnimationFrame(tick);
+  }
+
+  /* ---------- boot ---------- */
+  Field.create({
+    prefix: "clock",
+    visDefaults: { scale: 1 },
+    hint: "H HIDE · SPACE PAUSE · F FULL",
+    controls: [
+      { key:"scale", label:"SIZE", min:0.6, max:1.8, step:0.02, fmt:v=>"×"+v.toFixed(2) },
+    ],
+    onControl: (key) => { if (key === "scale" || key === "reset") applyScale(); },
+    keys: { " ": () => toggleRun() },
+  });
+
+  function applyScale(){ cellEl.style.transform = "translate(-50%,-50%) scale(" + Field.vis.scale + ")"; }
+
+  applyScale();
+  setButtons();
+  updatePill();
+  requestAnimationFrame(tick);
+  </script>
+</body>
+</html>

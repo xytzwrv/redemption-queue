@@ -1,0 +1,61 @@
+CLOCK — Local Time + Stream Timer, OBS Overlay
+===============================================
+
+WHAT THIS IS
+  One bordered cell with two readouts stacked inside it:
+    - LOCAL CLOCK   : a digital clock using YOUR BROWSER'S timezone
+                      (whatever timezone the PC running OBS is set to),
+                      with the date and timezone abbreviation underneath.
+    - STREAM TIME   : a counter for how long you've been streaming, with
+                      a LIVE / PAUSED pill.
+  Standalone - no Twitch login needed. Same 1-bit field-system look as
+  the rest of the set (Plinko, Wheel, Dice, POI, Facecam).
+
+WHAT'S IN THIS FOLDER
+  clock.html         - the applet
+  READ-ME-FIRST.txt  - this file
+  (loads ../shared/field.js and ../shared/field.css)
+
+OBS SETUP
+  1. Start the local server (double-click start-windows.bat one folder up).
+  2. Add a "Browser Source":
+       - URL:    http://localhost:8777/clock/clock.html
+       - Width:  1920    Height: 1080
+  3. Right-click -> Interact to use PAUSE / RESET TIMER / 24H / 12H.
+
+HOW THE STREAM TIMER WORKS
+  - It starts counting up automatically the very first time this page
+    loads - i.e. the moment you add the source (or first load it) when
+    you go live.
+  - It SURVIVES OBS reloading the browser source mid-stream (scene
+    switches, a "refresh cache of current page", etc.) because its
+    start time is saved to the browser's local storage, not just kept
+    in memory. Reloading the page will NOT reset it back to zero.
+  - Click PAUSE to freeze it (e.g. during a break) and RESUME to
+    continue from where it stopped.
+  - Click RESET TIMER (twice - it asks you to confirm) to zero it again.
+    Do this at the start of each new stream, since otherwise it keeps
+    counting from whatever it was left at last time.
+  - Prefer a fully automatic reset each day instead of clicking? Add
+    ?reset=1 to the URL for that one load (e.g. in a saved OBS browser
+    source you swap in fresh each stream), or just double-click RESET
+    TIMER when you go live.
+
+VISUALS CONSOLE (the "FX" panel, top-left; press H to hide)
+    - SIZE          : scales the whole cell up or down.
+    - PIXEL-PERFECT : integer nearest-neighbor scaling for the canvas
+                      layer (doesn't affect the crisp HTML text).
+    - ALPHA BG      : transparent background for layering in OBS.
+    - PALETTE       : EMBER, PHOSPHOR, MONO, DMG, ICE, MAGMA, PAPER.
+    - RESET         : restores visual settings only - it does NOT touch
+                      your stream timer (use RESET TIMER for that).
+  Keys: H = console, SPACE = pause/resume the stream timer, F = fullscreen.
+
+TIPS
+  - ?format=12 or ?format=24 sets the starting clock format (default 24;
+    also togglable live with the 24H/12H buttons).
+  - ?autostart=0 loads the stream timer paused instead of running.
+  - ?px=2..12 for chunkier pixels if you want them (renders 1:1 by default).
+  - The clock always reflects the local timezone of the machine running
+    the browser - there's no manual timezone picker, since the whole
+    point is it "just matches your PC's clock."
