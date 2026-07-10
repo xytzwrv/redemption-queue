@@ -209,7 +209,7 @@
   /* ---------- boot ---------- */
   Field.create({
     prefix: "facecam",
-    visDefaults: { pix: 2, camSize: 0.42, glow: 1, sens: 1.5, alpha: true },
+    visDefaults: { camSize: 0.42, glow: 1, sens: 1.5, alpha: true },
     hint: "H HIDE · M MIC · F FULL",
     controls: [
       { key:"camSize", label:"CAM SIZE",    min:0.2, max:0.75, step:0.01, fmt:v=>Math.round(v*100)+"%" },

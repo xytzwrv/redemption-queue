@@ -46,8 +46,8 @@ HOW TO PLAY (all buttons are clicked via OBS "Interact")
 VISUALS CONSOLE (the "FX" panel, top-left)
   Live sliders to tune how the wheel renders. Press H to hide/show it
   (hide it before you go live). Every setting is remembered.
-    - PIXEL SIZE  : chunkiness of the pixels (1-12). Also the main
-                    performance lever. 1 = crispest full-res look.
+    - (Pixels render 1:1 for the crispest look; no size slider. Add
+      ?px=2..12 to the URL for chunkier pixels if you want them.)
     - PIXEL-PERFECT : keeps every pixel an exact whole-number size so
                     nearest-neighbor scaling stays sharp. A few pixels
                     of letterbox at the edges is normal. Turn off to

@@ -36,8 +36,8 @@ CONTROLS (bottom "DICE" panel)
 
 VISUALS CONSOLE (the "FX" panel, top-left)
   Press H to hide/show it. Everything is remembered across refreshes.
-    - PIXEL SIZE    : chunkiness of the pixels (1-12). Also the main
-                      performance lever. 1 = crispest full-res look.
+    - (Pixels render 1:1 for the crispest look; no size slider. Add
+      ?px=2..12 to the URL for chunkier pixels if you want them.)
     - PIXEL-PERFECT : integer scaling so nearest-neighbor stays sharp
                       (a few pixels of letterbox at the edges is normal).
     - ALPHA BG      : transparent background for layering in OBS. The

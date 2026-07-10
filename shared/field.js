@@ -104,14 +104,14 @@
 
   function buildFx(){
     const controls = opts.controls || [];
-    let ctlHtml = '<div class="ctl" data-c="pix"><div class="lr"><span>PIXEL SIZE</span><span class="val"></span></div><input type="range" min="1" max="12" step="1"></div>';
+    let ctlHtml = "";
     for (const c of controls){
       ctlHtml += '<div class="ctl" data-c="'+c.key+'"><div class="lr"><span>'+c.label+'</span><span class="val"></span></div>'+
         '<input type="range" min="'+c.min+'" max="'+c.max+'" step="'+c.step+'"></div>';
     }
     fxEl.innerHTML =
       '<div class="strip"><span class="sq"></span>VISUALS<button class="x" title="Hide (H)">×</button></div>' +
-      '<div class="grp">RENDER</div>' + ctlHtml +
+      (controls.length ? '<div class="grp">RENDER</div>' + ctlHtml : "") +
       '<div class="togglerow">' +
         '<button class="btn" data-t="perfect">PIXEL-PERFECT</button>' +
         '<button class="btn" data-t="alpha">ALPHA BG</button>' +
@@ -119,14 +119,12 @@
       '<div class="grp">PALETTE</div><div class="pals"></div>' +
       '<div class="foot"><span class="hint">'+(opts.hint||"H HIDE · F FULL")+'</span><button class="btn" data-reset>RESET</button></div>';
 
-    const fmtPix = v => String(v);
     fxEl.querySelectorAll(".ctl").forEach(row => {
       const key = row.dataset.c, rng = row.querySelector("input"), val = row.querySelector(".val");
-      const spec = key === "pix" ? { fmt: fmtPix } : controls.find(c => c.key === key);
+      const spec = controls.find(c => c.key === key);
       rng.value = F.vis[key]; val.textContent = spec.fmt(F.vis[key]);
       rng.oninput = () => {
         F.vis[key] = parseFloat(rng.value); val.textContent = spec.fmt(F.vis[key]); saveVis();
-        if (key === "pix"){ F.PIX = F.vis.pix; rebuild(); }
         if (opts.onControl) opts.onControl(key, F.vis[key]);
       };
     });
@@ -187,7 +185,8 @@
     params = new URLSearchParams(location.search);
     F._defaults = { pix:1, perfect:true, alpha:false, palette:0, fxOpen:true, ...(opts.visDefaults||{}) };
     F.vis = loadVis();
-    if (params.get("px"))            F.vis.pix = Math.max(1, Math.min(12, parseInt(params.get("px")) || F.vis.pix));
+    // pixel size is locked to 1 (the slider was removed); ?px= still overrides.
+    F.vis.pix = params.get("px") ? Math.max(1, Math.min(12, parseInt(params.get("px")) || 1)) : 1;
     if (params.get("alpha") === "1") F.vis.alpha = true;
     F.PIX = F.vis.pix; F.ALPHA = F.vis.alpha;
 

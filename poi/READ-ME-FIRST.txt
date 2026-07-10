@@ -55,7 +55,6 @@ LIVE MAP ROTATION (automatic)
 
 VISUALS CONSOLE (the "FX" panel, top-left)
   Press H to hide/show it. Everything is remembered across refreshes.
-    - PIXEL SIZE    : chunkiness of the pixels (1-12). 1 = crispest.
     - PIXEL-PERFECT : integer nearest-neighbor scaling (small edge
                       letterbox is normal).
     - ALPHA BG      : transparent background for layering in OBS.

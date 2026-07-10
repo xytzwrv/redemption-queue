@@ -40,8 +40,8 @@ VISUALS CONSOLE (the "FX" panel, top-left)
   Live sliders to tune how the board renders. Press H to hide/show it
   (hide it before you go live), or click the FX button / the x. Every
   setting is remembered across refreshes.
-    - PIXEL SIZE  : chunkiness of the pixels (1-12). This is also the
-                    main performance lever - larger = coarser + faster.
+    - (Pixels render 1:1 for the crispest look; no size slider. Add
+      ?px=2..12 to the URL for chunkier/faster pixels if you need it.)
                     Set it to 1 for the crispest, full-resolution look.
     - PIXEL-PERFECT : keeps every pixel an exact whole-number size so
                     nearest-neighbor scaling stays sharp (no uneven
