@@ -1,0 +1,60 @@
+FACECAM FRAME + AUDIO VISUALIZER - OBS Overlay
+==============================================
+
+WHAT THIS IS
+  A neon/CRT orange frame for your webcam, with an audio-reactive
+  visualizer beneath it drawn from dithering characters (block shades
+  ░ ▒ ▓ █). The frame's glow, a subtle CRT flicker, and the bars all
+  react to your microphone. In the 1-bit field-system style of the set.
+
+  You DON'T put your camera inside this file - you lay your normal OBS
+  camera source ON TOP of the transparent frame interior. This element
+  just draws the glowing frame + the visualizer around/under it.
+
+WHAT'S IN THIS FOLDER
+  facecam.html       - the applet
+  READ-ME-FIRST.txt  - this file
+  (loads ../shared/field.js and ../shared/field.css)
+
+OBS SETUP
+  1. Start the local server (double-click start-windows.bat one folder up).
+  2. Add a "Browser Source":
+       - URL:    http://localhost:8777/facecam/facecam.html
+       - Width:  1920    Height: 1080
+     ALPHA BG is on by default, so everything except the frame + bars is
+     transparent.
+  3. Add your camera as a normal "Video Capture Device" source and
+     position/crop it over the frame's interior (the dark middle with the
+     "◉ FACECAM" placeholder). Put the camera ABOVE this browser source
+     in the source list so it covers the placeholder.
+  4. Right-click the browser source -> Interact, then click once (or press
+     M) to allow the microphone. If OBS blocks the mic, the bars still run
+     in a gentle simulated idle so nothing looks dead.
+
+MIC / AUDIO
+  - The visualizer reacts to your MICROPHONE (your voice). Talk and the
+    bars jump + the frame glows brighter.
+  - Want it to react to game/music instead? Route that audio into a
+    virtual mic (e.g. VB-CABLE) and select it as the browser's mic input.
+  - No mic / not allowed yet -> it shows a "click to enable mic" prompt
+    and plays a simulated idle pattern in the meantime.
+
+VISUALS CONSOLE (the "FX" panel, top-left; press H to hide)
+    - PIXEL SIZE    : chunkiness of the pixels (1-12). Default 2 for a
+                      chunkier CRT look; also the main performance lever.
+    - CAM SIZE      : how wide the camera frame is (% of the width).
+    - GLOW          : strength of the neon bloom around the frame.
+    - SENSITIVITY   : how strongly the bars/glow react to audio.
+    - PIXEL-PERFECT : integer nearest-neighbor scaling.
+    - ALPHA BG      : transparent background (leave ON for OBS; turn off
+                      to preview on a solid background).
+    - PALETTE       : EMBER (orange, default), PHOSPHOR, MONO, DMG, ICE,
+                      MAGMA, PAPER - retheme the neon colour.
+    - RESET         : restore defaults.
+  Keys: H = console, M = enable mic, F = fullscreen.
+
+TIPS
+  - The frame is 16:9. Size your camera crop to match, or just cover the
+    interior and let the frame border sit on top.
+  - ?px=3 chunkier, ?px=1 crisper. ?sim=1 forces the simulated bars
+    (handy for testing without a mic). ?alpha=0 previews on a solid bg.

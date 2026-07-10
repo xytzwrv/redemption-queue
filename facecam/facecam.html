@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FACECAM — 1-BIT FIELD SYSTEM</title>
+<link rel="stylesheet" href="../shared/field.css">
+<style>
+  #micHint{
+    position:fixed; left:50%; bottom:22px; transform:translateX(-50%); z-index:20;
+    display:flex; align-items:center; gap:8px;
+    background:var(--bg); border:1px solid var(--dot); color:var(--dot);
+    font-family:var(--pix); font-size:10px; letter-spacing:1px;
+    padding:8px 12px; cursor:pointer; text-transform:uppercase;
+    animation:blink 1.4s steps(2) infinite;
+  }
+  #micHint:hover{ background:var(--dot); color:var(--bg); }
+  @keyframes blink{ 50%{ opacity:.45; } }
+</style>
+</head>
+<body>
+  <canvas id="board"></canvas>
+
+  <div id="micHint">◉ Click / press M to enable mic</div>
+
+  <button id="fxToggle" title="Visual console (H)">FX</button>
+  <div id="fx"></div>
+
+  <script src="../shared/field.js"></script>
+  <script>
+  /* ================================================================
+     FACECAM — a neon/CRT orange frame for your camera, with a below-
+     the-cam audio visualizer drawn from DITHERING CHARACTERS (block
+     shades ░▒▒▓█). The camera itself is a separate OBS source you lay
+     ON TOP of the transparent frame interior. Everything (frame glow,
+     border flicker, visualizer) reacts to your microphone. Built on
+     the shared field system (field.js / field.css).
+
+     OBS: add as a Browser Source (ALPHA BG is on by default so only the
+     frame + bars are opaque), then place your camera source over the
+     interior. Right-click -> Interact once and click to allow the mic.
+
+     URL flags: ?px=N ?alpha=0 (solid bg) ?sim=1 (force simulated bars)
+     Keys: M enable mic · H console · F fullscreen.
+     ================================================================ */
+  const params = new URLSearchParams(location.search);
+  const micHint = document.getElementById("micHint");
+
+  let cam = { x:0, y:0, w:0, h:0 };
+  let viz = { x:0, y:0, w:0, h:0 };
+
+  function layout(){
+    const W = Field.W, H = Field.H;
+    const camW = W * Field.vis.camSize;
+    const camH = camW * 9/16;
+    cam = { x: (W - camW)/2, y: H*0.12, w: camW, h: camH };
+    const gap = Math.max(6, camH*0.07);
+    viz = { x: cam.x, y: cam.y + cam.h + gap, w: camW, h: Math.max(camH*0.5, H*0.14) };
+  }
+
+  /* ============================================================
+     AUDIO — mic -> FFT. Falls back to a simulated idle pattern so
+     the element is never dead (and for the ?sim=1 flag / preview).
+     ============================================================ */
+  let audioOn = false, analyser = null, freq = null, audioLevel = 0;
+  const FORCE_SIM = params.get("sim") === "1";
+  async function enableAudio(){
+    if(audioOn || FORCE_SIM) return;
+    try{
+      const AC = window.AudioContext || window.webkitAudioContext;
+      const ac = new AC(); await ac.resume();
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation:false, noiseSuppression:false, autoGainControl:false } });
+      const src = ac.createMediaStreamSource(stream);
+      analyser = ac.createAnalyser();
+      analyser.fftSize = 256; analyser.smoothingTimeConstant = 0.82;
+      src.connect(analyser);
+      freq = new Uint8Array(analyser.frequencyBinCount);
+      audioOn = true; micHint.style.display = "none";
+    }catch(e){ /* stay simulated; hint remains */ }
+  }
+  window.addEventListener("pointerdown", enableAudio);
+
+  let barsSmooth = [];
+  function computeBars(cols, now){
+    if(barsSmooth.length !== cols) barsSmooth = new Array(cols).fill(0);
+    const src = new Array(cols).fill(0);
+    if(audioOn && analyser){
+      analyser.getByteFrequencyData(freq);
+      const bins = freq.length, useBins = Math.floor(bins * 0.72);
+      for(let c=0;c<cols;c++){
+        const f0 = Math.floor(Math.pow(c/cols, 1.55) * useBins);
+        const f1 = Math.max(f0+1, Math.floor(Math.pow((c+1)/cols, 1.55) * useBins));
+        let m = 0; for(let i=f0;i<f1 && i<bins;i++) if(freq[i] > m) m = freq[i];
+        src[c] = m/255;
+      }
+    } else {
+      const t = now/600;
+      for(let c=0;c<cols;c++){
+        src[c] = Math.max(0, 0.14 + 0.12*Math.sin(t + c*0.5) + 0.09*Math.sin(t*1.7 + c*0.23) + 0.04*Math.random());
+      }
+    }
+    const g = Field.vis.sens; let lvl = 0;
+    for(let c=0;c<cols;c++){
+      const target = Math.min(1, src[c]*g);
+      barsSmooth[c] = target > barsSmooth[c] ? target : barsSmooth[c]*0.86 + target*0.14;
+      lvl += src[c];
+    }
+    audioLevel = audioLevel*0.85 + (lvl/cols)*0.15;
+    return barsSmooth;
+  }
+
+  /* ============================================================
+     RENDER
+     ============================================================ */
+  const RAMP = [" ", "░", "▒", "▓", "█"];   // dithering characters
+
+  // dithered neon bloom around the camera rect (with CRT scanline gaps)
+  function drawGlow(now){
+    const ctx = Field.ctx, C = Field.COL, P = Field.PIX;
+    const x0 = cam.x, y0 = cam.y, x1 = cam.x + cam.w, y1 = cam.y + cam.h;
+    const R = Math.max(8, Field.W*0.03);
+    const boost = 0.5 + 0.9*Math.min(1, audioLevel*1.4);
+    const flick = 0.92 + 0.08*Math.sin(now/37)*Math.sin(now/91);   // subtle CRT flicker
+    const strength = Math.min(1.7, Field.vis.glow * boost * flick);
+    const innerR = Math.max(3, Field.W*0.007);
+    const bx0=Math.floor((x0-R)/P), bx1=Math.ceil((x1+R)/P);
+    const by0=Math.floor((y0-R)/P), by1=Math.ceil((y1+R)/P);
+    for(let cy=by0;cy<by1;cy++){
+      if(cy % 3 === 0) continue;                                   // scanline gap
+      const py = cy*P + P/2;
+      for(let cx=bx0;cx<bx1;cx++){
+        const px = cx*P + P/2;
+        const dx = Math.max(x0-px, 0, px-x1), dy = Math.max(y0-py, 0, py-y1);
+        const dOut = Math.hypot(dx, dy);
+        if(dOut > 0){                                              // outside the rect: bloom
+          if(dOut > R) continue;
+          const t = 1 - dOut/R, inten = t*t*strength;
+          ctx.fillStyle = dOut < R*0.45 ? C.dot : C.blob;
+          if(Field.bayer(cx, cy, inten)) ctx.fillRect(cx*P, cy*P, P, P);
+        } else {                                                  // inside: thin inner tube glow, deep centre stays clear
+          const dIn = Math.min(px-x0, x1-px, py-y0, y1-py);
+          if(dIn > innerR) continue;
+          const inten = (1 - dIn/innerR) * strength;
+          ctx.fillStyle = C.dot;
+          if(Field.bayer(cx, cy, inten)) ctx.fillRect(cx*P, cy*P, P, P);
+        }
+      }
+    }
+  }
+
+  function drawFrame(now){
+    const ctx = Field.ctx, C = Field.COL, P = Field.PIX;
+    const flick = Math.sin(now/37)*Math.sin(now/91) > -0.85;      // rare flicker-off
+    // neon tube: outer thick blob line + inner bright dot line
+    ctx.strokeStyle = C.blob; ctx.lineWidth = Math.max(3, P*3);
+    ctx.strokeRect(cam.x, cam.y, cam.w, cam.h);
+    if(flick){ ctx.strokeStyle = C.dot; ctx.lineWidth = Math.max(1, P); ctx.strokeRect(cam.x, cam.y, cam.w, cam.h); }
+    // corner brackets (CRT bezel)
+    const L = Math.max(10, cam.w*0.06), o = Math.max(4, P*4);
+    ctx.strokeStyle = C.dot; ctx.lineWidth = Math.max(2, P*2);
+    const corner = (cxp, cyp, sx, sy) => { ctx.beginPath();
+      ctx.moveTo(cxp + sx*L, cyp - sy*o); ctx.lineTo(cxp - sx*o, cyp - sy*o); ctx.lineTo(cxp - sx*o, cyp + sy*L); ctx.stroke(); };
+    corner(cam.x, cam.y, 1, 1); corner(cam.x+cam.w, cam.y, -1, 1);
+    corner(cam.x, cam.y+cam.h, 1, -1); corner(cam.x+cam.w, cam.y+cam.h, -1, -1);
+    // faint interior placeholder (your OBS camera covers this)
+    ctx.fillStyle = C.blob;
+    ctx.font = "700 " + Math.max(9, cam.w*0.03) + "px " + Field.MONO;
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText("◉ FACECAM", cam.x + cam.w/2, cam.y + cam.h/2);
+  }
+
+  function drawViz(now){
+    const ctx = Field.ctx, C = Field.COL;
+    const { x, y, w, h } = viz;
+    // bigger, spaced glyphs so the ░▒▓█ dithering reads as characters, not solid bars
+    const fs = Math.max(9, Math.min(h/7, w/30));
+    const charW = fs*0.78, lineH = fs*1.06;
+    const cols = Math.max(8, Math.floor(w/charW));
+    const rows = Math.max(4, Math.floor(h/lineH));
+    const x0 = x + (w - cols*charW)/2;                  // centre the grid
+    const bars = computeBars(cols, now);
+    ctx.font = "700 " + fs + "px " + Field.MONO;
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    for(let c=0;c<cols;c++){
+      const bh = bars[c]*rows;
+      const bx = x0 + (c+0.5)*charW;
+      for(let r=0;r<rows;r++){
+        const fill = bh - r;
+        if(fill <= 0.06) continue;
+        const ci = Math.min(RAMP.length-1, Math.max(1, Math.round(Math.min(1, fill)*(RAMP.length-1))));
+        const by = y + h - (r+0.5)*lineH;
+        ctx.fillStyle = ci >= 4 ? C.dot : (ci >= 2 ? C.blob : C.dim);   // density -> brightness
+        ctx.fillText(RAMP[ci], bx, by);
+      }
+    }
+    // baseline
+    ctx.fillStyle = C.dim;
+    ctx.fillRect(x0, y + h, cols*charW, Math.max(1, Field.PIX));
+  }
+
+  function frame(now){
+    Field.clear();
+    drawGlow(now);
+    drawFrame(now);
+    drawViz(now);
+    requestAnimationFrame(frame);
+  }
+
+  /* ---------- boot ---------- */
+  Field.create({
+    prefix: "facecam",
+    visDefaults: { pix: 2, camSize: 0.42, glow: 1, sens: 1.5, alpha: true },
+    hint: "H HIDE · M MIC · F FULL",
+    controls: [
+      { key:"camSize", label:"CAM SIZE",    min:0.2, max:0.75, step:0.01, fmt:v=>Math.round(v*100)+"%" },
+      { key:"glow",    label:"GLOW",        min:0,   max:2,    step:0.05, fmt:v=>Math.round(v*100)+"%" },
+      { key:"sens",    label:"SENSITIVITY", min:0.5, max:4,    step:0.1,  fmt:v=>"×"+v.toFixed(1) },
+    ],
+    onResize: () => layout(),
+    onControl: (key) => { if(key === "camSize" || key === "reset") layout(); },
+    keys: { "m": () => enableAudio() },
+  });
+
+  if(FORCE_SIM) micHint.style.display = "none";
+  layout();
+  enableAudio();          // try immediately (OBS: prompts once)
+  requestAnimationFrame(frame);
+  </script>
+</body>
+</html>
