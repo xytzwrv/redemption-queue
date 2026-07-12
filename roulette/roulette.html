@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CHAT ROULETTE — 1-BIT FIELD SYSTEM</title>
+<link rel="stylesheet" href="../shared/field.css">
+<style>
+  #status{
+    position:fixed; top:16px; left:50%; transform:translateX(-50%); z-index:20;
+    min-width:320px; max-width:min(92vw,720px); text-align:center;
+  }
+  #status .body{ padding:10px 18px 12px; }
+  #status .head{ font-family:var(--pix); font-weight:700; font-size:20px; letter-spacing:1px; }
+  #status .head.open{ color:var(--dot); }
+  #status .head.locked{ color:var(--blob); }
+  #status .head.result{ color:var(--dot); }
+  #status .hint{ margin-top:6px; font-family:var(--mono); font-size:12px; color:var(--dot); opacity:.75; word-break:break-word; }
+
+  /* leaderboard (top-right) */
+  #lb{ position:fixed; top:16px; right:16px; z-index:20; width:250px; }
+  #lb .rows{ display:flex; flex-direction:column; }
+  #lb .row{ display:flex; align-items:center; gap:8px; padding:5px 12px; border-bottom:1px solid var(--dim); font-size:12px; }
+  #lb .row:last-child{ border-bottom:0; }
+  #lb .rank{ width:16px; font-family:var(--pix); font-size:9px; color:var(--dim); flex:0 0 auto; }
+  #lb .row:nth-child(1) .rank{ color:var(--dot); }
+  #lb .nm{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-family:var(--mono); }
+  #lb .bal{ font-family:var(--mono); color:var(--dot); white-space:nowrap; }
+  #lb .none{ padding:8px 12px; font-size:11px; opacity:.55; font-family:var(--mono); }
+
+  /* bet feed (bottom-left) */
+  #feed{ position:fixed; bottom:16px; left:16px; z-index:20; width:280px; }
+  #feed .rows{ display:flex; flex-direction:column; }
+  #feed .row{ padding:4px 12px; border-bottom:1px solid var(--dim); font-family:var(--mono); font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #feed .row:last-child{ border-bottom:0; }
+  #feed .row .u{ color:var(--dot); } #feed .row .a{ color:var(--blob); }
+  #feed .none{ padding:8px 12px; font-size:11px; opacity:.55; font-family:var(--mono); }
+
+  /* pot summary line under status */
+  #pot{ margin-top:6px; font-family:var(--pix); font-size:10px; letter-spacing:1px; color:var(--blob); }
+
+  #controls{
+    position:fixed; bottom:16px; left:50%; transform:translateX(-50%);
+    display:flex; gap:8px; z-index:20; align-items:stretch;
+  }
+
+  /* setup gate */
+  #gate{
+    position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
+    z-index:30; width:min(92vw,420px);
+  }
+  #gate .body{ padding:14px 16px; }
+  #gate p{ font-size:12px; line-height:1.6; color:var(--dot); opacity:.8; margin:0 0 12px; }
+  #gate input{ width:100%; background:var(--bg); color:var(--dot); border:1px solid var(--dot); font-family:var(--mono); font-size:14px; padding:8px; margin-bottom:12px; }
+  #gate input:focus{ outline:none; border-color:var(--blob); }
+</style>
+</head>
+<body>
+  <canvas id="board"></canvas>
+
+  <div id="status" class="panel" style="display:none">
+    <div class="strip"><span class="sq"></span><span class="chan">ROULETTE</span></div>
+    <div class="body"><div class="head open">—</div><div class="hint"></div><div id="pot"></div></div>
+  </div>
+
+  <div id="lb" class="panel" style="display:none">
+    <div class="strip"><span class="sq"></span>TOP STACKS</div>
+    <div class="rows"></div>
+  </div>
+
+  <div id="feed" class="panel" style="display:none">
+    <div class="strip"><span class="sq"></span>BETS</div>
+    <div class="rows"></div>
+  </div>
+
+  <div id="gate" class="panel" style="display:none">
+    <div class="strip"><span class="sq"></span>SETUP</div>
+    <div class="body">
+      <p>Enter your Twitch channel name so the game can read chat (read-only, no login needed). Viewers bet with <b>!bet</b>.</p>
+      <input id="gateInput" placeholder="your_channel_name" autocomplete="off" spellcheck="false">
+      <button class="btn on" id="gateGo" style="width:100%">CONNECT CHAT</button>
+    </div>
+  </div>
+
+  <div id="controls"></div>
+  <input type="file" id="importFile" accept="application/json" style="display:none">
+
+  <button id="fxToggle" title="Visual console (H)">FX</button>
+  <div id="fx"></div>
+
+  <script src="../shared/field.js"></script>
+  <script>
+  /* ================================================================
+     CHAT ROULETTE — a symbolic (fake-points) European roulette that
+     chat plays with !bet commands. Accurate wheel + real payout odds;
+     no Twitch login (reads chat over anonymous IRC). Scores are keyed
+     by Twitch USER-ID so renames never lose a balance, and persist
+     across OBS reloads. Built on the shared field system.
+
+     COMMANDS (viewers type in chat):
+       !bet red|black|odd|even|low|high <amount>
+       !bet <0-36> <amount>            (straight up, pays 35:1)
+       !bet dozen1|dozen2|dozen3 <amt> (or d1/d2/d3 — pays 2:1)
+       !bet col1|col2|col3 <amt>       (pays 2:1)
+       amount can be a number, "all", or "half"
+
+     URL flags:
+       ?channel=name   channel to read (or use the setup box)
+       ?demo=1         simulate a chat of bettors (no real channel)
+       ?secs=45        betting window length
+       ?auto=1         auto-loop rounds
+       ?px=N ?alpha=1
+     Keys: SPACE start round · E export scores · H console · F fullscreen
+     ================================================================ */
+  const params = new URLSearchParams(location.search);
+  const DEMO   = params.get("demo") === "1";
+  const BET_SECS = Math.max(10, Math.min(300, parseInt(params.get("secs")) || 45));
+
+  /* ============================================================
+     STORAGE MODULE — the ONLY place scores live. Swap this single
+     object for a backend (fetch to your VPS / Supabase) later; the
+     rest of the game only calls Store.*(). Keyed by Twitch user-id.
+     ============================================================ */
+  const Store = {
+    KEY: "roulette:scores",
+    START: 1000, BAILOUT: 100,
+    cache: {},
+    load(){ try { this.cache = JSON.parse(localStorage.getItem(this.KEY)) || {}; } catch { this.cache = {}; } },
+    save(){ try { localStorage.setItem(this.KEY, JSON.stringify(this.cache)); } catch {} },
+    rec(userId, name){
+      let r = this.cache[userId];
+      if(!r) r = this.cache[userId] = { name: name||userId, balance: this.START, wins:0, games:0, wagered:0 };
+      if(name) r.name = name;                       // keep the display name fresh
+      return r;
+    },
+    balance(userId){ const r = this.cache[userId]; return r ? r.balance : this.START; },
+    // commit a settled round: results = [{userId,name,delta,wagered,won}]
+    commit(results){
+      for(const x of results){
+        const r = this.rec(x.userId, x.name);
+        r.balance += x.delta;
+        r.wagered += x.wagered || 0;
+        r.games += 1;
+        if(x.won) r.wins += 1;
+        if(r.balance < this.BAILOUT) r.balance = this.BAILOUT;   // bankruptcy top-up so they can keep playing
+      }
+      this.save();
+    },
+    top(n){ return Object.values(this.cache).sort((a,b)=>b.balance-a.balance).slice(0, n); },
+    count(){ return Object.keys(this.cache).length; },
+    exportJSON(){ return JSON.stringify(this.cache, null, 2); },
+    importJSON(str){ try { const o = JSON.parse(str); if(o && typeof o === "object"){ this.cache = o; this.save(); return true; } } catch {} return false; },
+  };
+  Store.load();
+
+  /* ============================================================
+     ROULETTE MODEL — European single-zero wheel + true payouts
+     ============================================================ */
+  const WHEEL = [0,32,15,19,4,21,2,25,17,34,6,27,13,36,11,30,8,23,10,5,24,16,33,1,20,14,31,9,22,18,29,7,28,12,35,3,26];
+  const RED = new Set([1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36]);
+  const colorOf = (n) => n===0 ? "green" : (RED.has(n) ? "red" : "black");
+  const HEX = { red:"#d1402f", black:"#171009", green:"#2f9e44" };
+  const MULT = { straight:35, dozen:2, column:2, red:1, black:1, odd:1, even:1, low:1, high:1 };
+
+  function parseTarget(t){
+    t = t.toLowerCase();
+    if(/^\d{1,2}$/.test(t)){ const n=+t; if(n>=0 && n<=36) return { type:"straight", num:n, mult:35, label:"#"+n }; }
+    if(t==="hi") t="high"; if(t==="lo") t="low";
+    if(["red","black","odd","even","low","high"].includes(t)) return { type:t, mult:1, label:t.toUpperCase() };
+    let m = t.match(/^(?:d|dozen)([123])$/) || (["1st","2nd","3rd"].indexOf(t)>=0 ? [null, String(["1st","2nd","3rd"].indexOf(t)+1)] : null);
+    if(m) return { type:"dozen", which:+m[1], mult:2, label:"DOZEN"+m[1] };
+    m = t.match(/^(?:c|col|column)([123])$/);
+    if(m) return { type:"column", which:+m[1], mult:2, label:"COL"+m[1] };
+    return null;
+  }
+  function betWins(b, n){
+    switch(b.type){
+      case "straight": return n===b.num;
+      case "red":   return RED.has(n);
+      case "black": return n>=1 && !RED.has(n);
+      case "odd":   return n>=1 && n%2===1;
+      case "even":  return n>=1 && n%2===0;
+      case "low":   return n>=1 && n<=18;
+      case "high":  return n>=19 && n<=36;
+      case "dozen": return n>=(b.which-1)*12+1 && n<=b.which*12;
+      case "column":return n>0 && (n%3)===(b.which%3);
+    }
+    return false;
+  }
+
+  /* ============================================================
+     ELEMENTS
+     ============================================================ */
+  const statusEl = document.getElementById("status");
+  const lbEl = document.getElementById("lb");
+  const feedEl = document.getElementById("feed");
+  const gateEl = document.getElementById("gate");
+  const controlsEl = document.getElementById("controls");
+  const potEl = document.getElementById("pot");
+  const importFile = document.getElementById("importFile");
+
+  let channel = params.get("channel") || localStorage.getItem("roulette:channel") || "";
+  let autoLoop = params.get("auto") === "1";
+
+  /* ============================================================
+     ROUND STATE MACHINE
+     ============================================================ */
+  let state = "idle";           // setup | idle | open | locked | spinning | result
+  let round = null;             // { bets:[], pending:{}, openUntil }
+  let rot = 0, spinStart = 0, spinDur = 0, rotStart = 0, rotTarget = 0, winnerIdx = -1, landed = -1, winGlow = 0;
+  const feed = [];
+
+  function newRound(){ round = { bets:[], pending:{}, openUntil: Date.now() + BET_SECS*1000 }; }
+
+  function startRound(){
+    if(state === "open" || state === "spinning" || state === "locked") return;
+    newRound(); state = "open"; landed = -1; winnerIdx = -1;
+    feed.length = 0; renderFeed();
+    setButtons();
+  }
+
+  function placeBet(userId, name, targetTok, amountTok){
+    if(state !== "open" || !userId) return;
+    const spec = parseTarget(targetTok); if(!spec) return;
+    const bal = Store.balance(userId);
+    const reserved = round.pending[userId] || 0;
+    const avail = bal - reserved;
+    if(avail < 10) return;                                  // min bet 10
+    let amt;
+    if(amountTok === "all" || amountTok === "max") amt = avail;
+    else if(amountTok === "half") amt = Math.floor(avail/2);
+    else { amt = parseInt(amountTok); if(!isFinite(amt)) return; }
+    amt = Math.min(amt, avail);
+    if(amt < 10) return;
+    round.pending[userId] = reserved + amt;
+    round.bets.push({ userId, name, ...spec, amount: amt });
+    feed.unshift({ name, label: spec.label, amt });
+    if(feed.length > 20) feed.pop();
+    renderFeed(); renderPot();
+  }
+
+  function lockRound(){ state = "locked"; setStatus(); setButtons(); setTimeout(spinRound, 1200); }
+
+  function spinRound(){
+    state = "spinning";
+    winnerIdx = Math.floor(Math.random()*37);
+    const seg = 2*Math.PI/37;
+    const base = -Math.PI/2 - (winnerIdx*seg + seg/2);
+    const d = (((base - rot) % (2*Math.PI)) + 2*Math.PI) % (2*Math.PI);
+    rotStart = rot; rotTarget = rot + d + (5 + Math.floor(Math.random()*3))*2*Math.PI;
+    spinStart = performance.now(); spinDur = 6000 + Math.random()*1500;
+    setStatus(); setButtons();
+  }
+
+  function settleRound(){
+    landed = WHEEL[winnerIdx]; winGlow = 1;
+    const per = {};
+    for(const b of round.bets){
+      const u = per[b.userId] || (per[b.userId] = { name:b.name, delta:0, wagered:0, won:false });
+      u.name = b.name; u.wagered += b.amount;
+      if(betWins(b, landed)){ u.delta += b.amount * b.mult; u.won = true; }
+      else u.delta -= b.amount;
+    }
+    const results = Object.entries(per).map(([userId, v]) => ({ userId, ...v }));
+    Store.commit(results);
+    // biggest winner this round
+    let best = null;
+    for(const r of results) if(r.delta > 0 && (!best || r.delta > best.delta)) best = r;
+    round.result = { landed, best, players: results.length };
+    state = "result";
+    renderLB(); setStatus(); setButtons();
+    setTimeout(() => { if(state === "result"){ state = "idle"; setStatus(); setButtons(); if(autoLoop) startRound(); } }, 7000);
+  }
+
+  /* ============================================================
+     CHAT — anonymous IRC read (no auth). Also the entry point the
+     demo uses, so the whole parse->economy->settle path is tested.
+     ============================================================ */
+  let ws = null, wsRetry = null;
+  function connectIRC(){
+    if(!channel) return;
+    try { ws = new WebSocket("wss://irc-ws.chat.twitch.tv:443"); } catch { return; }
+    ws.onopen = () => {
+      ws.send("CAP REQ :twitch.tv/tags");
+      ws.send("NICK justinfan" + Math.floor(Math.random()*900000 + 100000));
+      ws.send("JOIN #" + channel.toLowerCase());
+      setStatus();
+    };
+    ws.onmessage = (e) => {
+      for(const line of e.data.split("\r\n")){
+        if(!line) continue;
+        if(line.startsWith("PING")){ ws.send("PONG :tmi.twitch.tv"); continue; }
+        const p = parseLine(line);
+        if(p) onChat(p.userId, p.name, p.msg);
+      }
+    };
+    ws.onclose = () => { clearTimeout(wsRetry); wsRetry = setTimeout(connectIRC, 3000); };
+    ws.onerror = () => { try { ws.close(); } catch {} };
+  }
+  // pure parser (unit-testable): IRC line -> {userId,name,msg} for PRIVMSG, else null
+  function parseLine(line){
+    if(!line.includes("PRIVMSG")) return null;
+    let tags = {}, rest = line;
+    if(line[0] === "@"){ const sp = line.indexOf(" "); for(const kv of line.slice(1, sp).split(";")){ const i = kv.indexOf("="); tags[kv.slice(0,i)] = kv.slice(i+1); } rest = line.slice(sp+1); }
+    const mi = rest.indexOf("PRIVMSG");
+    const ci = rest.indexOf(":", mi);
+    if(ci < 0) return null;
+    const msg = rest.slice(ci+1);
+    const userId = tags["user-id"] || ("anon:" + (rest.match(/^:([^!]+)!/)||[])[1]);
+    const name = tags["display-name"] || (rest.match(/^:([^!]+)!/)||[])[1] || "viewer";
+    return { userId, name, msg };
+  }
+  function onChat(userId, name, msg){
+    const t = msg.trim();
+    if(!/^!bet\b/i.test(t)) return;
+    const parts = t.split(/\s+/);
+    if(parts.length < 3) return;
+    placeBet(userId, name, parts[1], parts[2]);
+  }
+
+  /* ============================================================
+     RENDER — wheel on canvas; panels are DOM
+     ============================================================ */
+  let cx=0, cy=0, R=0;
+  function layout(){ cx = Field.W*0.42; cy = Field.H*0.54; R = Math.min(Field.W, Field.H)*0.34; }
+
+  function drawWheel(now, dt){
+    const ctx = Field.ctx, C = Field.COL, P = Field.PIX;
+    const seg = 2*Math.PI/37;
+    for(let i=0;i<37;i++){
+      const n = WHEEL[i], a0 = i*seg + rot, a1 = a0 + seg;
+      ctx.fillStyle = HEX[colorOf(n)];
+      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.arc(cx, cy, R, a0, a1); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = C.bg; ctx.lineWidth = Math.max(1, P); ctx.stroke();
+    }
+    // winning pocket: whole wedge dithered glow
+    if((state==="result") && winGlow > 0.02 && winnerIdx>=0){
+      const a0 = winnerIdx*seg + rot;
+      const pulse = winGlow * (0.5 + 0.5*Math.sin(now/140));
+      const path = new Path2D(); path.moveTo(cx,cy); path.arc(cx,cy,R,a0,a0+seg); path.closePath();
+      ctx.save(); ctx.clip(path); Field.dithRect(cx-R, cy-R, R*2, R*2, pulse, C.dot); ctx.restore();
+      winGlow = Math.max(0, winGlow - dt/7);
+    }
+    // numbers
+    ctx.fillStyle = C.dot;
+    ctx.font = "700 " + Math.max(9, R*0.052) + "px " + Field.MONO;
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    for(let i=0;i<37;i++){
+      const mid = i*seg + seg/2 + rot, rr = R*0.84;
+      ctx.fillText(WHEEL[i], cx + Math.cos(mid)*rr, cy + Math.sin(mid)*rr);
+    }
+    // rim
+    ctx.strokeStyle = C.dot; ctx.lineWidth = Math.max(1, P);
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, 2*Math.PI); ctx.stroke();
+    // hub + result number
+    ctx.fillStyle = C.bg; ctx.beginPath(); ctx.arc(cx, cy, R*0.34, 0, 2*Math.PI); ctx.fill();
+    ctx.strokeStyle = C.dot; ctx.beginPath(); ctx.arc(cx, cy, R*0.34, 0, 2*Math.PI); ctx.stroke();
+    if(landed >= 0){
+      ctx.fillStyle = HEX[colorOf(landed)] === "#171009" ? C.dot : HEX[colorOf(landed)];
+      ctx.font = "700 " + R*0.34 + "px " + Field.MONO;
+      ctx.fillText(String(landed), cx, cy);
+    } else {
+      ctx.fillStyle = C.dim; ctx.font = "700 " + R*0.1 + "px " + Field.MONO;
+      ctx.fillText("◉", cx, cy);
+    }
+    // pointer (top)
+    const py = cy - R - Math.max(3, P*2), pw = Math.max(8, R*0.05);
+    ctx.fillStyle = C.dot;
+    ctx.beginPath(); ctx.moveTo(cx-pw, py-pw); ctx.lineTo(cx+pw, py-pw); ctx.lineTo(cx, py+pw*1.4); ctx.closePath(); ctx.fill();
+  }
+
+  function renderFeed(){
+    const rows = feedEl.querySelector(".rows");
+    if(feed.length === 0){ rows.innerHTML = '<div class="none">no bets yet</div>'; return; }
+    rows.innerHTML = feed.slice(0,10).map(f =>
+      '<div class="row"><span class="u">'+esc(f.name)+'</span> → <span class="a">'+Field.fmt(f.amt)+'</span> '+esc(f.label)+'</div>').join("");
+  }
+  function renderPot(){
+    let total = 0, n = round ? round.bets.length : 0;
+    if(round) for(const b of round.bets) total += b.amount;
+    potEl.textContent = n ? (n + " BET" + (n===1?"":"S") + " · " + Field.fmt(total) + " POT") : "";
+  }
+  function renderLB(){
+    const rows = lbEl.querySelector(".rows");
+    const top = Store.top(8);
+    if(top.length === 0){ rows.innerHTML = '<div class="none">no players yet</div>'; return; }
+    rows.innerHTML = top.map((r,i) =>
+      '<div class="row"><span class="rank">'+String(i+1).padStart(2,"0")+'</span><span class="nm">'+esc(r.name)+'</span><span class="bal">'+Field.fmt(r.balance)+'</span></div>').join("");
+  }
+  const esc = (s) => String(s).replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+
+  function setStatus(){
+    statusEl.style.display = state === "setup" ? "none" : "";
+    statusEl.querySelector(".chan").textContent = (DEMO ? "DEMO" : (channel ? "#"+channel : "ROULETTE")).toUpperCase();
+    const head = statusEl.querySelector(".head"), hint = statusEl.querySelector(".hint");
+    head.className = "head";
+    if(state === "open"){ head.classList.add("open"); head.textContent = "BETS OPEN"; hint.textContent = "!bet red 100 · !bet 17 50 · !bet odd all"; }
+    else if(state === "locked"){ head.classList.add("locked"); head.textContent = "NO MORE BETS"; hint.textContent = "spinning…"; }
+    else if(state === "spinning"){ head.classList.add("locked"); head.textContent = "SPINNING…"; hint.textContent = ""; }
+    else if(state === "result"){ head.classList.add("result");
+      head.textContent = "● " + landed + " " + colorOf(landed).toUpperCase();
+      const b = round && round.result && round.result.best;
+      hint.textContent = b ? (b.name + " won " + Field.fmt(b.delta)) : (round && round.result && round.result.players ? "house wins — no winners" : "no bets");
+    }
+    else { head.textContent = "READY"; hint.textContent = autoLoop ? "auto-looping…" : "press START ROUND"; }
+    renderPot();
+  }
+
+  function mkbtn(label, cls, fn){ const b=document.createElement("button"); b.className="btn "+(cls||""); b.textContent=label; b.onclick=fn; return b; }
+  function setButtons(){
+    controlsEl.innerHTML = "";
+    if(state === "idle" || state === "result"){
+      controlsEl.appendChild(mkbtn(state==="result" ? "NEW ROUND" : "START ROUND", "on", startRound));
+    } else if(state === "open"){
+      controlsEl.appendChild(mkbtn("CLOSE BETS", "on", lockRound));
+    }
+    controlsEl.appendChild(mkbtn(autoLoop ? "AUTO: ON" : "AUTO: OFF", autoLoop ? "on" : "ghost", () => { autoLoop = !autoLoop; setButtons(); setStatus(); if(autoLoop && (state==="idle")) startRound(); }));
+    const seg = document.createElement("div"); seg.style.display="flex"; seg.style.gap="8px";
+    seg.appendChild(mkbtn("EXPORT", "ghost", doExport));
+    seg.appendChild(mkbtn("IMPORT", "ghost", () => importFile.click()));
+    controlsEl.appendChild(seg);
+  }
+
+  function doExport(){
+    const blob = new Blob([Store.exportJSON()], { type:"application/json" });
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
+    a.download = "roulette-scores-" + new Date().toISOString().slice(0,10) + ".json";
+    a.click(); URL.revokeObjectURL(a.href);
+  }
+  importFile.onchange = (e) => {
+    const f = e.target.files[0]; if(!f) return;
+    const r = new FileReader();
+    r.onload = () => { if(Store.importJSON(r.result)) renderLB(); };
+    r.readAsText(f); importFile.value = "";
+  };
+
+  /* ============================================================
+     FRAME LOOP — drives countdown, spin easing, wheel render
+     ============================================================ */
+  let lastFrame = 0;
+  function frame(now){
+    const dt = Math.min(1/30, (now - lastFrame)/1000 || 0); lastFrame = now;
+    if(state === "open"){
+      const left = Math.max(0, round.openUntil - Date.now());
+      statusEl.querySelector(".head").textContent = "BETS OPEN  " + Math.ceil(left/1000) + "s";
+      if(left <= 0) lockRound();
+    }
+    if(state === "spinning"){
+      const t = Math.min(1, (now - spinStart)/spinDur);
+      const e = 1 - Math.pow(1-t, 4);
+      rot = rotStart + (rotTarget - rotStart)*e;
+      if(t >= 1) settleRound();
+    }
+    Field.clear();
+    if(state !== "setup") drawWheel(now, dt);
+    requestAnimationFrame(frame);
+  }
+
+  /* ============================================================
+     DEMO — simulate a chat of bettors through the real onChat path
+     ============================================================ */
+  function startDemo(){
+    const names = ["PixelWizard","NightOwl_42","GlitchQueen","TurboSnail","LoafOfBread","CozyRaccoon","ByteMe2","QuantumDuck","MoonMoth","SaltMiner","DiceGoblin","HypeTrain"];
+    const users = names.map((n,i)=>({ id:"demo-"+i, name:n }));
+    const targets = ["red","black","odd","even","low","high","dozen1","dozen2","dozen3","col1","col2","col3","0","17","7","23","32"];
+    setInterval(() => {
+      if(state !== "open") return;
+      const u = users[Math.floor(Math.random()*users.length)];
+      const tg = targets[Math.floor(Math.random()*targets.length)];
+      const amt = [10,25,50,100,250,"all","half"][Math.floor(Math.random()*7)];
+      onChat(u.id, u.name, "!bet " + tg + " " + amt);
+    }, 350);
+  }
+
+  /* ============================================================
+     BOOT
+     ============================================================ */
+  Field.create({
+    prefix: "roulette",
+    hint: "SPACE START · E EXPORT · H HIDE · F FULL",
+    onResize: () => layout(),
+    keys: {
+      " ": () => { if(state==="idle"||state==="result") startRound(); else if(state==="open") lockRound(); },
+      "e": () => doExport(),
+    },
+  });
+
+  layout();
+  renderLB(); renderFeed(); setButtons();
+  lbEl.style.display = ""; feedEl.style.display = "";
+
+  if(DEMO){ state = "idle"; setStatus(); startDemo(); if(autoLoop || true) startRound(); }
+  else if(channel){ state = "idle"; setStatus(); connectIRC(); if(autoLoop) startRound(); }
+  else {
+    state = "setup"; gateEl.style.display = "";
+    document.getElementById("gateInput").value = channel;
+    document.getElementById("gateGo").onclick = () => {
+      const v = document.getElementById("gateInput").value.trim().replace(/^#/, "").replace(/^https?:\/\/(www\.)?twitch\.tv\//i, "").split(/[/?\s]/)[0];
+      if(!v) return;
+      channel = v; localStorage.setItem("roulette:channel", channel);
+      gateEl.style.display = "none"; state = "idle"; setStatus(); connectIRC();
+    };
+  }
+
+  requestAnimationFrame(frame);
+  </script>
+</body>
+</html>
