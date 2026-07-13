@@ -1,0 +1,28 @@
+TWITCH PLINKO — DRACULA EDITION
+===============================
+
+A Dracula-themed fork of Plinko (../plinko). Same game — gather chatters,
+drop their avatars down the pegs, crown a winner, keep a leaderboard —
+but restyled as a modern, rounded, smooth (anti-aliased) UI in the
+Dracula palette instead of the 1-bit pixel look.
+
+  - Rounded cards, soft shadows, Inter font; smooth pegs, ball chips,
+    and a soft radial peg-glow / confetti (not dithered).
+  - The theme selector in the FX console (press H) now picks DRACULA
+    PATTERNS: Purple, Pink, Cyan, Green, Orange, Red, Night, Alucard.
+  - The PIXEL-PERFECT toggle is gone (rendering is smooth/high-DPI now).
+
+FILES
+  plinko.html        - the applet (loads ../shared/dracula.js + dracula.css)
+  READ-ME-FIRST.txt  - this file
+
+SETUP / TWITCH
+  Same as ../plinko — add this page's URL to your Twitch app's OAuth
+  Redirect URLs and add it as a Browser Source:
+      http://localhost:8777/plinko-dracula/plinko.html
+  It shares the same Twitch login + leaderboard as ../plinko (so your
+  standings carry over) but keeps its own theme choice. See
+  ../plinko/READ-ME-FIRST.txt for the full feature docs (test runs,
+  StreamElements payouts, etc.) — everything works the same, re-skinned.
+
+Keys: H console · Space drop · F fullscreen. ?demo=1 previews with fakes.

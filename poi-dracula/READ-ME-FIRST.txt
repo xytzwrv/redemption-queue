@@ -1,0 +1,24 @@
+RANDOM POI — DRACULA EDITION
+============================
+
+A Dracula-themed fork of the POI selector (../poi). Same feature set —
+pick an Apex map, spin, land on a random POI — but restyled as a modern,
+rounded, smooth (anti-aliased) UI in the Dracula palette instead of the
+1-bit pixel look.
+
+  - Rounded cards, soft shadows, Inter font, smooth region wireframes.
+  - The theme selector in the FX console (press H) now picks DRACULA
+    PATTERNS: Purple, Pink, Cyan, Green, Orange, Red, Night, Alucard.
+  - The selected/landed region gets a soft translucent glow (not a
+    dithered one).
+
+FILES
+  poi.html           - the applet (loads ../shared/dracula.js + dracula.css)
+  READ-ME-FIRST.txt  - this file
+
+OBS: add http://localhost:8777/poi-dracula/poi.html as a Browser Source.
+It keeps its own theme choice (separate from the pixel-art ../poi), but
+shares the live Apex map-rotation lookup. See ../poi/READ-ME-FIRST.txt
+for the full feature docs — everything works the same, just re-skinned.
+
+Keys: H console · Space select · F fullscreen. ?theme=0..7 presets a pattern.
