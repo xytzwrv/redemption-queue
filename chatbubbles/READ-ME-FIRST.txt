@@ -4,9 +4,11 @@ CHAT BUBBLES - OBS Overlay
 WHAT THIS IS
   Every chat message spawns a white rectangle with black console-font
   text and a colored username, drops in with a "pop" sound, and floats
-  upward - bouncing off all four edges of the screen and off every
-  other bubble on screen, in a real (if simple) physics simulation, not
-  just a CSS animation. Each bubble fades out after 20 seconds.
+  upward - bouncing off all four edges of the screen, tumbling and
+  tilting from hitting every other bubble on screen, in a real (if
+  simple) 2D physics simulation, not just a CSS animation. After 20
+  seconds the ceiling opens up for that bubble and it floats off the
+  top of the screen for good instead of bouncing forever.
 
   No Twitch login needed - it reads chat anonymously (read-only), same
   as the map/POI selector and dice. Just type your channel name once.
@@ -42,8 +44,10 @@ TIPS
   - Long messages are truncated (CONFIG.maxMessageChars, default 200)
     so a giant paste can't spawn a screen-dominating rectangle.
   - Tune the feel in CONFIG at the top of the <script> block:
-    lifespanMs (20000), buoyancy/driftJitter/maxSpeed (how floaty/fast
-    they are), wallRestitution/bubbleRestitution (how bouncy), and
+    lifespanMs (20000, time before the ceiling opens), buoyancy/
+    driftJitter/maxSpeed (how floaty/fast they are), wallRestitution/
+    bubbleRestitution (how bouncy), angularDrag/spinFromHit/
+    maxAngularSpeed (how much they tumble from hits), and
     sound.volume/startFreq/endFreq/duration (the pop sound).
   - The pop sound is synthesized (a short Web Audio oscillator blip),
     not an audio file - nothing to download or go missing. Some

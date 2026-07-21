@@ -110,8 +110,9 @@
     perUserCooldownMs: 4000,  // one chatter can't flood the screen solo
     spawnQueueMax: 24,        // pending backlog cap; overflow drops the oldest queued message
     maxBubbles: 60,           // hard concurrent cap; new spawns evict the oldest bubble (fast fade)
-    lifespanMs: 20000,        // how long a bubble lives before fading out
-    fadeMs: 600,              // fade-out duration at end of life
+    lifespanMs: 20000,        // how long a bubble stays boxed in before the ceiling opens up
+                               // and it floats off the top of the screen for good
+    fadeMs: 600,              // fade duration, used only when force-evicted early (maxBubbles cap)
     // A constant one-directional force (buoyancy) combined with ANY energy
     // loss per bounce (restitution < 1, drag > 0) mathematically converges
     // to resting pinned against that wall - the classic "bouncing ball on a
@@ -121,11 +122,14 @@
     // for their whole 20s life instead of freezing solid after a few seconds.
     buoyancy: 70,              // px/s^2 upward acceleration (no downward gravity - bouncing off
                                 // the ceiling is what brings a bubble back down)
-    driftJitter: 40,           // px/s^2 max random horizontal jitter, for organic drift
+    driftJitter: 40,           // px/s^2 max random jitter on both axes, for free 2D drift
     maxSpeed: 320,             // px/s clamp on both axes
     wallRestitution: 0.9,      // bounciness off the screen edges
     bubbleRestitution: 0.8,    // bounciness bubble-vs-bubble
     airDrag: 0.03,             // per-second multiplicative velocity decay
+    angularDrag: 0.6,          // per-second spin decay, so tumbling settles down between hits
+    spinFromHit: 0.015,        // how much a collision's tangential velocity converts to spin
+    maxAngularSpeed: 6,        // rad/s clamp
     physicsHz: 120,           // fixed-timestep physics rate
     sound: { enabled: true, volume: 0.18, startFreq: 900, endFreq: 240, duration: 0.09 },
   };
@@ -249,11 +253,13 @@
       w, h, x, y,
       vx: (Math.random() - 0.5) * 140,
       vy: -(100 + Math.random() * 80),
+      angle: (Math.random() - 0.5) * 0.6,
+      angularVelocity: (Math.random() - 0.5) * 1.5,
       mass: Math.min(4, Math.max(0.4, (w * h) / (200 * 40))),
       bornAt: t, dieAt: 0, state: "alive",
     };
 
-    el.style.transform = "translate3d(" + x + "px," + y + "px,0)";
+    el.style.transform = "translate3d(" + x + "px," + y + "px,0) rotate(" + bubble.angle + "rad)";
     el.style.visibility = "visible";
     void inner.offsetWidth; // force reflow so the pop replays even for rapid spawns
     inner.classList.add("pop");
@@ -278,8 +284,12 @@
   function ageAndCullBubbles(t) {
     let anyDead = false;
     for (const b of bubbles) {
-      if (b.state === "alive" && t - b.bornAt > CONFIG.lifespanMs - CONFIG.fadeMs) startDeath(b, t);
+      // At 20s the ceiling opens (see stepPhysics) instead of fading out -
+      // once a "free" bubble has fully cleared the top of the screen it's
+      // gone for good, no fade needed since it's already out of view.
+      if (b.state === "alive" && t - b.bornAt > CONFIG.lifespanMs) b.state = "free";
       else if (b.state === "dying" && t > b.dieAt) { killBubble(b); anyDead = true; }
+      else if (b.state === "free" && b.y + b.h < 0) { killBubble(b); anyDead = true; }
     }
     if (anyDead) bubbles = bubbles.filter((b) => b.state !== "dead");
   }
@@ -307,6 +317,14 @@
       a.vx += j * nx * invA; a.vy += j * ny * invA;
       b.vx -= j * nx * invB; b.vy -= j * ny * invB;
     }
+
+    // A glancing hit (relative velocity with a component along the contact
+    // surface, not just head-on) sets both bubbles tumbling - lighter ones
+    // spin more readily than heavier ones, same invA/invB weighting as above.
+    const tx = -ny, ty = nx;
+    const relT = rvx * tx + rvy * ty;
+    a.angularVelocity += relT * CONFIG.spinFromHit * invA;
+    b.angularVelocity -= relT * CONFIG.spinFromHit * invB;
   }
 
   function stepPhysics(dt, W, H) {
@@ -314,16 +332,25 @@
       if (b.state === "dead") continue;
       b.vy -= CONFIG.buoyancy * dt;
       b.vx += (Math.random() * 2 - 1) * CONFIG.driftJitter * dt;
+      b.vy += (Math.random() * 2 - 1) * CONFIG.driftJitter * dt;
       const drag = Math.max(0, 1 - CONFIG.airDrag * dt);
       b.vx *= drag; b.vy *= drag;
       const sp = Math.hypot(b.vx, b.vy);
       if (sp > CONFIG.maxSpeed) { const k = CONFIG.maxSpeed / sp; b.vx *= k; b.vy *= k; }
       b.x += b.vx * dt; b.y += b.vy * dt;
 
-      if (b.x < 0)      { b.x = 0;     if (b.vx < 0) b.vx = -b.vx * CONFIG.wallRestitution; }
-      if (b.x > W - b.w) { b.x = W - b.w; if (b.vx > 0) b.vx = -b.vx * CONFIG.wallRestitution; }
-      if (b.y < 0)      { b.y = 0;     if (b.vy < 0) b.vy = -b.vy * CONFIG.wallRestitution; }
-      if (b.y > H - b.h) { b.y = H - b.h; if (b.vy > 0) b.vy = -b.vy * CONFIG.wallRestitution; }
+      b.angle += b.angularVelocity * dt;
+      b.angularVelocity *= Math.max(0, 1 - CONFIG.angularDrag * dt);
+      if (Math.abs(b.angularVelocity) > CONFIG.maxAngularSpeed) {
+        b.angularVelocity = Math.sign(b.angularVelocity) * CONFIG.maxAngularSpeed;
+      }
+
+      if (b.x < 0)      { b.x = 0;     if (b.vx < 0) { b.vx = -b.vx * CONFIG.wallRestitution; b.angularVelocity += b.vy * CONFIG.spinFromHit; } }
+      if (b.x > W - b.w) { b.x = W - b.w; if (b.vx > 0) { b.vx = -b.vx * CONFIG.wallRestitution; b.angularVelocity -= b.vy * CONFIG.spinFromHit; } }
+      // "free" bubbles (past their 20s) have no ceiling - they float straight
+      // through the top of the screen and get cleaned up once fully off it.
+      if (b.y < 0 && b.state !== "free") { b.y = 0; if (b.vy < 0) { b.vy = -b.vy * CONFIG.wallRestitution; b.angularVelocity -= b.vx * CONFIG.spinFromHit; } }
+      if (b.y > H - b.h) { b.y = H - b.h; if (b.vy > 0) { b.vy = -b.vy * CONFIG.wallRestitution; b.angularVelocity += b.vx * CONFIG.spinFromHit; } }
     }
     for (let i = 0; i < bubbles.length; i++) {
       if (bubbles[i].state === "dead") continue;
@@ -349,7 +376,7 @@
 
     for (const b of bubbles) {
       if (b.state === "dead") continue;
-      b.el.style.transform = "translate3d(" + b.x + "px," + b.y + "px,0)";
+      b.el.style.transform = "translate3d(" + b.x + "px," + b.y + "px,0) rotate(" + b.angle + "rad)";
     }
     requestAnimationFrame(frame);
   }
