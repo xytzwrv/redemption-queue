@@ -93,10 +93,16 @@
     font-variant-numeric: tabular-nums;
   }
 
-  /* Album art, only revealed while popped. */
+  /* Album art, only revealed while popped. Square is forced via the
+     classic padding-top:100% trick (not the `aspect-ratio` property) -
+     OBS's bundled browser often runs an older Chromium that silently
+     ignores aspect-ratio, which was collapsing this into a non-square
+     rectangle. padding-top:100% is resolved against the container's
+     WIDTH even for a vertical padding, so it works everywhere. */
   #artwrap { padding: 14px 14px 8px; }
+  #artSquare { position: relative; width: 100%; padding-top: 100%; }
   #art {
-    width: 100%; aspect-ratio: 1 / 1; border-radius: 8px;
+    position: absolute; inset: 0; border-radius: 8px;
     background: var(--purple);
     display: flex; align-items: center; justify-content: center;
     font-size: 40px;
@@ -110,7 +116,7 @@
   <div id="app">
     <div id="card">
       <div id="cardInner">
-        <div id="artwrap"><div id="art"></div></div>
+        <div id="artwrap"><div id="artSquare"><div id="art"></div></div></div>
         <div id="strip">
           <div id="marqueeViewport">
             <div id="marqueeTrack">
