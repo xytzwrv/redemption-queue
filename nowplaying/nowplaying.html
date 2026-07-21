@@ -60,20 +60,36 @@
   #dot.ok  { background: var(--green); color: var(--green); }
   #dot.err { background: var(--red);   color: var(--red); }
 
-  /* Always-visible top strip: what's playing, in brief. */
+  /* Always-visible top strip: what's playing, in brief. Its background
+     doubles as the track's progress bar - a flat green fill that grows
+     left-to-right via --progress (a % custom property updated in JS). */
   #strip {
-    display: flex; align-items: center; gap: 6px;
+    position: relative;
+    display: flex; align-items: center; gap: 8px;
     padding: 11px 14px; height: var(--peek-h);
     font-size: 12px;
+    background: linear-gradient(to right, rgba(80,250,123,.28), rgba(80,250,123,.28)) no-repeat;
+    background-size: var(--progress, 0%) 100%;
+    transition: background-size 1s linear;
   }
-  #strip .song, #strip .artist {
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
-  }
-  #strip .song   { color: var(--fg); font-weight: 700; flex: 0 1 auto; }
-  #strip .sep    { color: var(--comment); flex: 0 0 auto; }
-  #strip .artist { color: var(--comment); flex: 1 1 auto; }
   #strip.action { cursor: pointer; }
   #strip.action .song { color: var(--purple); }
+
+  /* Song/artist marquee: scrolls only if it doesn't fit; the fixed time
+     label to its right never moves. */
+  #marqueeViewport { flex: 1 1 auto; min-width: 0; overflow: hidden; }
+  #marqueeTrack {
+    display: inline-flex; align-items: baseline; gap: 6px;
+    white-space: nowrap; will-change: transform;
+  }
+  #marqueeTrack .song   { color: var(--fg); font-weight: 700; }
+  #marqueeTrack .sep    { color: var(--comment); }
+  #marqueeTrack .artist { color: var(--comment); }
+
+  #timeLabel {
+    flex: 0 0 auto; color: var(--comment); font-size: 11px;
+    font-variant-numeric: tabular-nums;
+  }
 
   /* Album art, only revealed while popped. */
   #artwrap { padding: 0 14px 14px; }
@@ -93,9 +109,14 @@
     <div id="card">
       <div id="dot" title="Spotify connection status"></div>
       <div id="strip">
-        <span class="song" id="songName">—</span>
-        <span class="sep">·</span>
-        <span class="artist" id="artistName">Waiting for a song…</span>
+        <div id="marqueeViewport">
+          <div id="marqueeTrack">
+            <span class="song" id="songName">—</span>
+            <span class="sep">·</span>
+            <span class="artist" id="artistName">Waiting for a song…</span>
+          </div>
+        </div>
+        <span id="timeLabel">0:00 / 0:00</span>
       </div>
       <div id="artwrap"><div id="art"></div></div>
     </div>
@@ -123,12 +144,15 @@
   // Redirect URI must EXACTLY match what you registered on Spotify.
   const REDIRECT = location.origin + location.pathname;
 
-  const cardEl   = document.getElementById("card");
-  const artEl    = document.getElementById("art");
-  const songEl   = document.getElementById("songName");
-  const artistEl = document.getElementById("artistName");
-  const stripEl  = document.getElementById("strip");
-  const dotEl    = document.getElementById("dot");
+  const cardEl      = document.getElementById("card");
+  const artEl       = document.getElementById("art");
+  const songEl      = document.getElementById("songName");
+  const artistEl    = document.getElementById("artistName");
+  const stripEl     = document.getElementById("strip");
+  const dotEl       = document.getElementById("dot");
+  const timeEl      = document.getElementById("timeLabel");
+  const marqueeViewportEl = document.getElementById("marqueeViewport");
+  const marqueeTrackEl    = document.getElementById("marqueeTrack");
 
   function setDot(state) { dotEl.className = state || ""; }
 
@@ -143,6 +167,64 @@
     }
   }
 
+  /* ---------- Progress bar + timestamp ----------
+     playback is captured once per poll (or once per demo song); render()
+     interpolates a live position between captures so the bar/time keep
+     moving smoothly instead of only updating once every few seconds. */
+  let playback = { positionMs: 0, durationMs: 0, isPlaying: false, capturedAt: 0 };
+  function setPlayback({ positionMs = 0, durationMs = 0, isPlaying = false } = {}) {
+    playback = { positionMs, durationMs, isPlaying, capturedAt: Date.now() };
+    // Jump straight to the freshly-known position - no animated sweep from
+    // wherever the bar previously was. The 1s ticks below transition smoothly
+    // from this point instead, which is what makes it read as "progress."
+    stripEl.style.transition = "none";
+    renderProgress();
+    void stripEl.offsetWidth;
+    stripEl.style.transition = "";
+  }
+  function formatTime(ms) {
+    const totalSec = Math.max(0, Math.floor(ms / 1000));
+    const m = Math.floor(totalSec / 60);
+    const s = totalSec % 60;
+    return m + ":" + String(s).padStart(2, "0");
+  }
+  function renderProgress() {
+    let pos = playback.positionMs;
+    if (playback.isPlaying) pos += Date.now() - playback.capturedAt;
+    pos = playback.durationMs ? Math.min(pos, playback.durationMs) : 0;
+    const pct = playback.durationMs ? (pos / playback.durationMs) * 100 : 0;
+    stripEl.style.setProperty("--progress", pct.toFixed(2) + "%");
+    timeEl.textContent = formatTime(pos) + " / " + formatTime(playback.durationMs);
+  }
+  setInterval(renderProgress, 1000);
+
+  /* ---------- Marquee: scroll only if the text overflows its viewport,
+     pausing at each end (pause -> scroll -> pause -> scroll back -> ...). */
+  let marqueeTimer = null;
+  function updateMarquee() {
+    clearTimeout(marqueeTimer);
+    marqueeTrackEl.style.transition = "none";
+    marqueeTrackEl.style.transform = "translateX(0)";
+    void marqueeTrackEl.offsetWidth; // force reflow before measuring
+    const overflow = marqueeTrackEl.scrollWidth - marqueeViewportEl.clientWidth;
+    if (overflow > 4) scheduleMarquee(overflow);
+  }
+  function scheduleMarquee(overflow) {
+    const PAUSE_MS = 1200;
+    const scrollMs = Math.max(1500, (overflow / 40) * 1000); // ~40px/sec
+    marqueeTimer = setTimeout(() => {
+      marqueeTrackEl.style.transition = "transform " + scrollMs + "ms linear";
+      marqueeTrackEl.style.transform = "translateX(-" + overflow + "px)";
+      marqueeTimer = setTimeout(() => {
+        marqueeTimer = setTimeout(() => {
+          marqueeTrackEl.style.transition = "transform " + scrollMs + "ms linear";
+          marqueeTrackEl.style.transform = "translateX(0)";
+          marqueeTimer = setTimeout(() => scheduleMarquee(overflow), PAUSE_MS);
+        }, PAUSE_MS);
+      }, scrollMs);
+    }, PAUSE_MS);
+  }
+
   let popTimer = null;
   function songChanged({ artist, title, art, emoji } = {}) {
     stripEl.classList.remove("action");
@@ -150,6 +232,7 @@
     artistEl.textContent = artist || "Unknown Artist";
     applyArt(art);
     artEl.textContent = emoji || "";
+    updateMarquee();
 
     cardEl.classList.remove("popped");
     void cardEl.offsetWidth; // force reflow so the pop replays even back-to-back
@@ -168,6 +251,8 @@
     songEl.textContent = song;
     artistEl.textContent = artist || "";
     applyArt(null);
+    updateMarquee();
+    setPlayback(); // no active track - clear the progress bar/timestamp
   }
 
   if (DEMO) {
@@ -178,8 +263,12 @@
       { artist: "CHVRCHES",      title: "The Mother We Share",         art: "#50fa7b", emoji: "🎹" },
     ];
     let i = 0;
-    songChanged(samples[i++ % samples.length]);
-    setInterval(() => songChanged(samples[i++ % samples.length]), CONFIG.demoIntervalMs);
+    const playDemo = () => {
+      songChanged(samples[i++ % samples.length]);
+      setPlayback({ positionMs: 0, durationMs: CONFIG.demoIntervalMs, isPlaying: true });
+    };
+    playDemo();
+    setInterval(playDemo, CONFIG.demoIntervalMs);
   } else {
     bootSpotify();
   }
@@ -346,6 +435,13 @@
         art: images[0] && images[0].url,
       });
     }
+    // Update every poll (not just on a track change) so the bar/timestamp
+    // keep tracking seeks, pauses, and ordinary playback progress.
+    setPlayback({
+      positionMs: data.progress_ms || 0,
+      durationMs: track.duration_ms || 0,
+      isPlaying: !!data.is_playing,
+    });
   }
 
   let pollTimer = null;
