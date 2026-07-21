@@ -67,14 +67,6 @@
     display: flex; flex-direction: column;
   }
 
-  #dot {
-    position: absolute; top: 9px; right: 10px; z-index: 1;
-    width: 7px; height: 7px; border-radius: 50%;
-    background: var(--comment); box-shadow: 0 0 6px currentColor; color: var(--comment);
-  }
-  #dot.ok  { background: var(--green); color: var(--green); }
-  #dot.err { background: var(--red);   color: var(--red); }
-
   /* Always-visible bottom strip: what's playing, in brief. */
   #strip {
     position: relative;
@@ -117,7 +109,6 @@
 <body>
   <div id="app">
     <div id="card">
-      <div id="dot" title="Spotify connection status"></div>
       <div id="cardInner">
         <div id="artwrap"><div id="art"></div></div>
         <div id="strip">
@@ -161,12 +152,9 @@
   const songEl      = document.getElementById("songName");
   const artistEl    = document.getElementById("artistName");
   const stripEl     = document.getElementById("strip");
-  const dotEl       = document.getElementById("dot");
   const timeEl      = document.getElementById("timeLabel");
   const marqueeViewportEl = document.getElementById("marqueeViewport");
   const marqueeTrackEl    = document.getElementById("marqueeTrack");
-
-  function setDot(state) { dotEl.className = state || ""; }
 
   function applyArt(art) {
     if (art && /^https?:\/\//.test(art)) {
@@ -402,7 +390,6 @@
   }
 
   function setGate(mode, note) {
-    setDot("");
     if (mode === "no-client") setStrip("Add Spotify Client ID", "see READ-ME-FIRST.txt");
     else if (mode === "connect") setStrip(note || "Connect Spotify", "click to authorize", { clickable: true });
     else if (mode === "error") setStrip(note || "Spotify connect failed", "click to retry", { clickable: true });
@@ -431,19 +418,17 @@
         headers: { Authorization: "Bearer " + token },
       });
     } catch {
-      setDot("err"); // network hiccup - leave the current display up, retry next poll
-      return;
+      return; // network hiccup - leave the current display up, retry next poll
     }
 
-    if (res.status === 204) { currentTrackId = null; setDot("ok"); setStrip("Nothing playing", ""); return; }
+    if (res.status === 204) { currentTrackId = null; setStrip("Nothing playing", ""); return; }
     if (res.status === 401) { clearTokens(); setGate("connect", "Spotify session expired"); return; }
-    if (!res.ok) { setDot("err"); return; }
+    if (!res.ok) return;
 
     const data = await res.json().catch(() => null);
     const track = data && data.item;
-    if (!track) { currentTrackId = null; setDot("ok"); setStrip("Nothing playing", ""); return; }
+    if (!track) { currentTrackId = null; setStrip("Nothing playing", ""); return; }
 
-    setDot("ok");
     if (track.id !== currentTrackId) {
       currentTrackId = track.id;
       const images = (track.album && track.album.images) || [];

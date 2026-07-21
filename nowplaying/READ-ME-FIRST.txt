@@ -44,10 +44,6 @@ SPOTIFY SETUP (about 5 minutes, one time)
   reconnect every stream - only if you revoke access on Spotify's end or
   clear browser storage.
 
-  The little dot in the card's top-right corner shows connection state:
-  grey = not connected yet, green = connected, red = a request just
-  failed (it'll keep retrying on its own).
-
 TIPS
   - Add  ?demo=1  to the URL to preview the animation with a looping
     sample playlist instead of real Spotify data:
