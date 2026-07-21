@@ -37,20 +37,35 @@
 
   #app {
     position: fixed; inset: 0;
-    display: flex; flex-direction: column; align-items: flex-end;
+    display: flex; flex-direction: column; align-items: flex-end; justify-content: flex-end;
     padding: 16px; gap: 10px;
   }
 
-  /* ---------- Now Playing card ---------- */
+  /* ---------- Now Playing card ----------
+     The strip is pinned to the BOTTOM of the card at all times. #cardInner
+     holds the real (fixed-size) content bottom-anchored inside #card, so
+     as #card's height grows, the reveal happens from the top downward
+     toward the strip - i.e. the art slides up out from behind the strip,
+     like a drawer, while the strip itself never moves. Progress-bar tint
+     lives on #card so it extends behind the art too, not just the strip. */
   #card {
     position: relative;
-    width: 260px; max-height: var(--peek-h); overflow: hidden;
-    background: var(--card); border: 1px solid var(--line);
+    width: 260px; height: var(--peek-h); overflow: hidden;
+    background-color: var(--card);
+    background-image: linear-gradient(to right, rgba(80,250,123,.28), rgba(80,250,123,.28));
+    background-repeat: no-repeat;
+    background-size: var(--progress, 0%) 100%;
+    border: 1px solid var(--line);
     border-radius: var(--radius); box-shadow: 0 6px 18px rgba(0,0,0,.45);
     backdrop-filter: blur(3px);
-    transition: max-height .5s cubic-bezier(.2,.8,.2,1);
+    transition: height .5s cubic-bezier(.2,.8,.2,1), background-size 1s linear;
   }
-  #card.popped { max-height: var(--full-h); }
+  #card.popped { height: var(--full-h); }
+
+  #cardInner {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    display: flex; flex-direction: column;
+  }
 
   #dot {
     position: absolute; top: 9px; right: 10px; z-index: 1;
@@ -60,17 +75,12 @@
   #dot.ok  { background: var(--green); color: var(--green); }
   #dot.err { background: var(--red);   color: var(--red); }
 
-  /* Always-visible top strip: what's playing, in brief. Its background
-     doubles as the track's progress bar - a flat green fill that grows
-     left-to-right via --progress (a % custom property updated in JS). */
+  /* Always-visible bottom strip: what's playing, in brief. */
   #strip {
     position: relative;
     display: flex; align-items: center; gap: 8px;
-    padding: 11px 14px; height: var(--peek-h);
+    padding: 11px 14px; height: var(--peek-h); flex: 0 0 auto;
     font-size: 12px;
-    background: linear-gradient(to right, rgba(80,250,123,.28), rgba(80,250,123,.28)) no-repeat;
-    background-size: var(--progress, 0%) 100%;
-    transition: background-size 1s linear;
   }
   #strip.action { cursor: pointer; }
   #strip.action .song { color: var(--purple); }
@@ -92,7 +102,7 @@
   }
 
   /* Album art, only revealed while popped. */
-  #artwrap { padding: 0 14px 14px; }
+  #artwrap { padding: 14px 14px 8px; }
   #art {
     width: 100%; aspect-ratio: 1 / 1; border-radius: 8px;
     background: var(--purple);
@@ -108,17 +118,19 @@
   <div id="app">
     <div id="card">
       <div id="dot" title="Spotify connection status"></div>
-      <div id="strip">
-        <div id="marqueeViewport">
-          <div id="marqueeTrack">
-            <span class="song" id="songName">—</span>
-            <span class="sep">·</span>
-            <span class="artist" id="artistName">Waiting for a song…</span>
+      <div id="cardInner">
+        <div id="artwrap"><div id="art"></div></div>
+        <div id="strip">
+          <div id="marqueeViewport">
+            <div id="marqueeTrack">
+              <span class="song" id="songName">—</span>
+              <span class="sep">·</span>
+              <span class="artist" id="artistName">Waiting for a song…</span>
+            </div>
           </div>
+          <span id="timeLabel">0:00 / 0:00</span>
         </div>
-        <span id="timeLabel">0:00 / 0:00</span>
       </div>
-      <div id="artwrap"><div id="art"></div></div>
     </div>
   </div>
 
@@ -177,10 +189,12 @@
     // Jump straight to the freshly-known position - no animated sweep from
     // wherever the bar previously was. The 1s ticks below transition smoothly
     // from this point instead, which is what makes it read as "progress."
-    stripEl.style.transition = "none";
+    // Scoped to just "height" so this doesn't also interrupt/snap an
+    // in-flight pop/collapse animation (#card transitions height too).
+    cardEl.style.transitionProperty = "height";
     renderProgress();
-    void stripEl.offsetWidth;
-    stripEl.style.transition = "";
+    void cardEl.offsetWidth;
+    cardEl.style.transitionProperty = "";
   }
   function formatTime(ms) {
     const totalSec = Math.max(0, Math.floor(ms / 1000));
@@ -193,7 +207,7 @@
     if (playback.isPlaying) pos += Date.now() - playback.capturedAt;
     pos = playback.durationMs ? Math.min(pos, playback.durationMs) : 0;
     const pct = playback.durationMs ? (pos / playback.durationMs) * 100 : 0;
-    stripEl.style.setProperty("--progress", pct.toFixed(2) + "%");
+    cardEl.style.setProperty("--progress", pct.toFixed(2) + "%");
     timeEl.textContent = formatTime(pos) + " / " + formatTime(playback.durationMs);
   }
   setInterval(renderProgress, 1000);
