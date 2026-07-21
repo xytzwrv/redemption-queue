@@ -368,8 +368,12 @@
 
     const verifier = randomString(64);
     const state = randomString(16);
-    sessionStorage.setItem("np:sp:verifier", verifier);
-    sessionStorage.setItem("np:sp:state", state);
+    // localStorage, not sessionStorage: the code comes back in a POPUP,
+    // a separate browsing context with its own session storage that
+    // doesn't reliably inherit values written here in the opener.
+    // localStorage is a live, shared, per-origin store, so it does.
+    localStorage.setItem("np:sp:verifier", verifier);
+    localStorage.setItem("np:sp:state", state);
     const url = new URL("https://accounts.spotify.com/authorize");
     url.searchParams.set("client_id", CONFIG.spotifyClientId);
     url.searchParams.set("response_type", "code");
@@ -460,11 +464,13 @@
   async function bootSpotify() {
     const p = new URLSearchParams(location.search);
     if (p.has("code") || p.has("error")) {
-      const savedState = sessionStorage.getItem("np:sp:state");
-      const verifier    = sessionStorage.getItem("np:sp:verifier");
+      const savedState = localStorage.getItem("np:sp:state");
+      const verifier    = localStorage.getItem("np:sp:verifier");
       const code  = p.get("code");
       const state = p.get("state");
       history.replaceState(null, "", REDIRECT); // strip the auth response from the URL
+      localStorage.removeItem("np:sp:state");
+      localStorage.removeItem("np:sp:verifier"); // one-shot - never reuse a verifier
       if (code && verifier && state === savedState) {
         try {
           await exchangeCode(code, verifier);
