@@ -31,13 +31,12 @@ SPOTIFY SETUP (about 5 minutes, one time)
        - URL:    http://127.0.0.1:8777/nowplaying/nowplaying.html
        - Width:  320     Height: 260
   5. Right-click the source -> Interact, then click the "Connect Spotify"
-     text in the card. A small popup window opens for Spotify's login/
-     approve screen - the overlay itself stays put and never navigates
-     away. Approve, and the popup closes itself and polling starts right
-     away - no need to touch the file again after that.
-       - If the popup gets blocked, it falls back to redirecting the
-         overlay page itself, same as before - just click back to your
-         OBS source afterward.
+     text in the card. It redirects to Spotify's login/approve screen,
+     then back to this same page, and polling starts right away - no
+     need to touch the file again after that. (This is a full-page
+     redirect, not a popup - OBS's Browser Source "Interact" view often
+     can't show a real popup window reliably, so this is the more
+     robust option.)
 
   Tokens (including a refresh token) are stored in the browser's local
   storage, so it silently refreshes in the background and won't make you

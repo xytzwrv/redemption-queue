@@ -286,10 +286,11 @@
      2. Load this page via that same 127.0.0.1 URL (not localhost) so the
         origin matches what you registered.
      3. Click the "Connect Spotify" text in the card (Interact -> click, if
-        this is already sitting in an OBS Browser Source). A popup window
-        opens for the Spotify login/approve screen - the overlay itself
-        never navigates away. The popup closes itself automatically once
-        it's done and the overlay starts polling right away.
+        this is already sitting in an OBS Browser Source). It redirects to
+        Spotify's login/approve screen, then back here - a full-page
+        redirect, not a popup, since OBS's Browser Source "Interact" view
+        often can't show a real popup window (it can open off-screen,
+        behind OBS, or get silently blocked - it's not reliable there).
         Tokens + a refresh token are stored in localStorage, so it silently
         refreshes and won't need reconnecting every stream.
      ======================================================================= */
@@ -363,17 +364,8 @@
   }
 
   async function login() {
-    // Open the popup synchronously (still inside the click's user-gesture),
-    // then point it at Spotify once the PKCE challenge is ready - otherwise
-    // Safari treats the async-delayed window.open as a blocked popup.
-    const popup = window.open("about:blank", "spotify-auth", "width=480,height=720");
-
     const verifier = randomString(64);
     const state = randomString(16);
-    // localStorage, not sessionStorage: the code comes back in a POPUP,
-    // a separate browsing context with its own session storage that
-    // doesn't reliably inherit values written here in the opener.
-    // localStorage is a live, shared, per-origin store, so it does.
     localStorage.setItem("np:sp:verifier", verifier);
     localStorage.setItem("np:sp:state", state);
     const url = new URL("https://accounts.spotify.com/authorize");
@@ -384,9 +376,7 @@
     url.searchParams.set("code_challenge_method", "S256");
     url.searchParams.set("code_challenge", await challengeFor(verifier));
     url.searchParams.set("state", state);
-
-    if (popup) popup.location.href = url.toString();
-    else location.href = url.toString(); // popup blocked - fall back to a full-page redirect
+    location.href = url.toString(); // full-page redirect, then back here after approval
   }
 
   function setGate(mode, note) {
@@ -453,13 +443,6 @@
     if (!pollTimer) pollTimer = setInterval(pollNowPlaying, CONFIG.pollMs);
   }
 
-  // Runs in the MAIN window: react once the popup finishes the auth round-trip.
-  window.addEventListener("message", (ev) => {
-    if (ev.origin !== location.origin || !ev.data) return;
-    if (ev.data.type === "np:sp:connected") startPolling();
-    else if (ev.data.type === "np:sp:auth-error") setGate("error");
-  });
-
   async function bootSpotify() {
     const p = new URLSearchParams(location.search);
     if (p.has("code") || p.has("error")) {
@@ -471,27 +454,8 @@
       localStorage.removeItem("np:sp:state");
       localStorage.removeItem("np:sp:verifier"); // one-shot - never reuse a verifier
       if (code && verifier && state === savedState) {
-        try {
-          await exchangeCode(code, verifier);
-          if (window.opener) {
-            // This load IS the popup, right after Spotify redirected back to
-            // it - hand the result to the real overlay window and disappear.
-            window.opener.postMessage({ type: "np:sp:connected" }, location.origin);
-            window.close();
-            return;
-          }
-        } catch {
-          if (window.opener) {
-            window.opener.postMessage({ type: "np:sp:auth-error" }, location.origin);
-            window.close();
-            return;
-          }
-          setGate("error");
-          return;
-        }
-      } else if (window.opener) {
-        window.close(); // stray/expired popup load - nothing useful to do here
-        return;
+        try { await exchangeCode(code, verifier); }
+        catch { setGate("error"); return; }
       }
     }
 
