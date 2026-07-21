@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Slinkystream — Dashboard</title>
+<style>
+  :root {
+    --bg:        #282a36;
+    --bg2:       #21222c;
+    --line:      #44475a;
+    --fg:        #f8f8f2;
+    --comment:   #6272a4;
+    --cyan:      #8be9fd;
+    --green:     #50fa7b;
+    --orange:    #ffb86c;
+    --pink:      #ff79c6;
+    --purple:    #bd93f9;
+    --red:       #ff5555;
+    --yellow:    #f1fa8c;
+    --card:      #2f3140;
+    --radius:    12px;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0; min-height: 100%;
+    background: var(--bg);
+    font-family: "Segoe UI", "Inter", system-ui, sans-serif;
+    color: var(--fg);
+  }
+
+  body { padding: 32px 24px 60px; }
+
+  header { max-width: 1000px; margin: 0 auto 28px; }
+  header h1 { margin: 0 0 6px; font-size: 26px; }
+  header p  { margin: 0; color: var(--comment); font-size: 14px; line-height: 1.5; max-width: 640px; }
+  header code {
+    color: var(--cyan); background: rgba(0,0,0,.25);
+    padding: 1px 6px; border-radius: 5px; font-size: 13px;
+  }
+
+  #grid {
+    max-width: 1000px; margin: 0 auto;
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 16px;
+  }
+
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 16px 18px; display: flex; flex-direction: column; gap: 10px;
+    box-shadow: 0 6px 18px rgba(0,0,0,.35);
+  }
+  .card h2 { margin: 0; font-size: 16px; }
+  .card p  { margin: 0; color: var(--comment); font-size: 13px; line-height: 1.45; flex: 1; }
+
+  .tags { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tag {
+    font-size: 10px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase;
+    padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--comment);
+  }
+  .tag.login  { color: var(--orange); border-color: var(--orange); }
+  .tag.nologin{ color: var(--green);  border-color: var(--green); }
+  .tag.style  { color: var(--purple); border-color: var(--purple); }
+  .tag.new    { color: var(--pink);   border-color: var(--pink); }
+
+  .row { display: flex; align-items: center; gap: 8px; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--purple); color: var(--bg);
+    border: none; border-radius: 8px; padding: 8px 14px;
+    font-size: 13px; font-weight: 700; cursor: pointer; text-decoration: none;
+    transition: transform .1s, filter .15s;
+  }
+  .btn:hover { filter: brightness(1.08); }
+  .btn:active { transform: scale(.97); }
+  .btn.ghost {
+    background: transparent; color: var(--comment); border: 1px solid var(--line);
+    font-weight: 600;
+  }
+  .btn.ghost:hover { color: var(--fg); border-color: var(--comment); }
+  .btn.ghost.copied { color: var(--green); border-color: var(--green); }
+
+  .urlbox {
+    width: 100%; margin-top: 2px;
+    background: var(--bg2); border: 1px solid var(--line); border-radius: 6px;
+    color: var(--cyan); font: 11px/1.4 ui-monospace, "SF Mono", Consolas, monospace;
+    padding: 6px 8px; cursor: text;
+  }
+  .urlbox:focus { outline: 1px solid var(--purple); }
+
+  footer { max-width: 1000px; margin: 32px auto 0; color: var(--comment); font-size: 12px; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>Slinkystream — Overlay Dashboard</h1>
+    <p>
+      Every OBS element in this repo, in one place. "Open" launches the
+      standalone page; "Copy URL" grabs the exact link to paste into an OBS
+      Browser Source, resolved against wherever this page is being served
+      from. Tip: load this dashboard itself via
+      <code>http://127.0.0.1:8777/dashboard.html</code> rather than
+      <code>localhost</code> - every copied link then works everywhere,
+      including Now Playing, whose Spotify login specifically requires
+      127.0.0.1.
+    </p>
+  </header>
+
+  <div id="grid"></div>
+
+  <footer>Roulette has been retired and removed from the set.</footer>
+
+  <script>
+    const ELEMENTS = [
+      {
+        name: "Now Playing", path: "nowplaying/nowplaying.html",
+        desc: "Live Spotify now-playing panel: peeks a thin top strip during playback, pops open with real album art on a track change. Needs its own setup - see nowplaying/READ-ME-FIRST.txt. Note: its Spotify login requires opening it via 127.0.0.1, not localhost.",
+        tags: [["style","Dracula"], ["login","Spotify login"], ["new","New"]],
+      },
+      {
+        name: "Redemption Queue", path: "redemption-queue.html",
+        desc: "Channel-point redemptions queue, checked off one by one. Ducks off-screen once it gets long, floats back in for new redemptions or every 10 minutes.",
+        tags: [["style","Dracula"], ["login","Twitch login"]],
+      },
+      {
+        name: "Clock", path: "clock/clock.html",
+        desc: "Local-time digital clock plus a persistent stream timer that survives OBS reloads.",
+        tags: [["style","1-bit field"], ["nologin","No login"]],
+      },
+      {
+        name: "Dice", path: "dice/dice.html",
+        desc: "Wireframe 3D dice roller — anything from a coin (d2) up to a d100.",
+        tags: [["style","1-bit field"], ["nologin","No login"]],
+      },
+      {
+        name: "Facecam Frame", path: "facecam/facecam.html",
+        desc: "Neon/CRT webcam frame with a mic-reactive, dithered-character audio visualizer.",
+        tags: [["style","1-bit field"], ["nologin","No login"]],
+      },
+      {
+        name: "Plinko", path: "plinko/plinko.html",
+        desc: "Drops your chatters' avatars down a peg board, crowns a winner, keeps a leaderboard.",
+        tags: [["style","1-bit field"], ["login","Twitch login"]],
+      },
+      {
+        name: "Plinko — Dracula", path: "plinko-dracula/plinko.html",
+        desc: "Same Plinko game, restyled as a smooth, rounded Dracula-palette UI.",
+        tags: [["style","Dracula"], ["login","Twitch login"]],
+      },
+      {
+        name: "POI Selector", path: "poi/poi.html",
+        desc: "Random Apex Legends drop-spot picker — flickers across the map and lands on one.",
+        tags: [["style","1-bit field"], ["nologin","No login"]],
+      },
+      {
+        name: "POI Selector — Dracula", path: "poi-dracula/poi.html",
+        desc: "Same POI selector, restyled as a smooth, rounded Dracula-palette UI.",
+        tags: [["style","Dracula"], ["nologin","No login"]],
+      },
+      {
+        name: "Wheel", path: "wheel/wheel.html",
+        desc: "Spinning name wheel — one color-coded slice per chatter, tracks a win leaderboard.",
+        tags: [["style","1-bit field"], ["login","Twitch login"]],
+      },
+    ];
+
+    const grid = document.getElementById("grid");
+
+    for (const el of ELEMENTS) {
+      const card = document.createElement("div");
+      card.className = "card";
+
+      const h2 = document.createElement("h2"); h2.textContent = el.name;
+      const p  = document.createElement("p");  p.textContent = el.desc;
+
+      const tags = document.createElement("div"); tags.className = "tags";
+      for (const [cls, label] of el.tags) {
+        const t = document.createElement("span"); t.className = "tag " + cls; t.textContent = label;
+        tags.appendChild(t);
+      }
+
+      const row = document.createElement("div"); row.className = "row";
+      const open = document.createElement("a");
+      open.className = "btn"; open.href = el.path; open.target = "_blank"; open.rel = "noopener";
+      open.textContent = "Open ↗";
+
+      const url = new URL(el.path, location.href).href;
+      const urlBox = document.createElement("input");
+      urlBox.className = "urlbox"; urlBox.type = "text"; urlBox.readOnly = true; urlBox.value = url;
+      urlBox.addEventListener("focus", () => urlBox.select());
+
+      const copy = document.createElement("button");
+      copy.className = "btn ghost"; copy.type = "button"; copy.textContent = "Copy URL";
+      copy.addEventListener("click", async () => {
+        // Some embedded browsers (e.g. OBS's Browser Source, or a sandboxed
+        // preview frame) reject or hang on the clipboard permission prompt -
+        // race it against a timeout and always fall back to selecting the
+        // plain-text field below, which works with no permissions at all.
+        const timeout = (ms) => new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), ms));
+        let ok = true;
+        try {
+          await Promise.race([navigator.clipboard.writeText(url), timeout(600)]);
+        } catch {
+          ok = false;
+        }
+        if (!ok) { urlBox.focus(); urlBox.select(); }
+        copy.classList.add("copied");
+        copy.textContent = ok ? "Copied!" : "Selected ↓";
+        setTimeout(() => { copy.classList.remove("copied"); copy.textContent = "Copy URL"; }, 1400);
+      });
+
+      row.append(open, copy);
+      card.append(h2, p, tags, row, urlBox);
+      grid.appendChild(card);
+    }
+  </script>
+</body>
+</html>

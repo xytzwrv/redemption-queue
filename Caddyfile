@@ -1,0 +1,9 @@
+# Replace overlay.yourdomain.com with the domain you pointed at the VPS.
+# Caddy automatically obtains + renews a free HTTPS certificate for it.
+# Put this at /etc/caddy/Caddyfile on the VPS, then: sudo systemctl reload caddy
+
+overlay.yourdomain.com {
+    root * /var/www/overlay
+    file_server
+    encode gzip
+}

@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Now Playing</title>
+<style>
+  /* ---------- Dracula palette (matches redemption-queue.html) ---------- */
+  :root {
+    --bg:        #282a36;
+    --line:      #44475a;
+    --fg:        #f8f8f2;
+    --comment:   #6272a4;
+    --cyan:      #8be9fd;
+    --green:     #50fa7b;
+    --orange:    #ffb86c;
+    --pink:      #ff79c6;
+    --purple:    #bd93f9;
+    --red:       #ff5555;
+    --yellow:    #f1fa8c;
+
+    --card:      rgba(40, 42, 54, 0.92);
+    --radius:    12px;
+    --peek-h:    40px;
+    --full-h:    320px;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: transparent;              /* OBS overlay: keep transparent */
+    font-family: "Segoe UI", "Inter", system-ui, sans-serif;
+    color: var(--fg);
+    overflow: hidden;
+  }
+
+  #app {
+    position: fixed; inset: 0;
+    display: flex; flex-direction: column; align-items: flex-end;
+    padding: 16px; gap: 10px;
+  }
+
+  /* ---------- Now Playing card ---------- */
+  #card {
+    position: relative;
+    width: 260px; max-height: var(--peek-h); overflow: hidden;
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: var(--radius); box-shadow: 0 6px 18px rgba(0,0,0,.45);
+    backdrop-filter: blur(3px);
+    transition: max-height .5s cubic-bezier(.2,.8,.2,1);
+  }
+  #card.popped { max-height: var(--full-h); }
+
+  #dot {
+    position: absolute; top: 9px; right: 10px; z-index: 1;
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--comment); box-shadow: 0 0 6px currentColor; color: var(--comment);
+  }
+  #dot.ok  { background: var(--green); color: var(--green); }
+  #dot.err { background: var(--red);   color: var(--red); }
+
+  /* Always-visible top strip: what's playing, in brief. */
+  #strip {
+    display: flex; align-items: center; gap: 6px;
+    padding: 11px 14px; height: var(--peek-h);
+    font-size: 12px;
+  }
+  #strip .song, #strip .artist {
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
+  }
+  #strip .song   { color: var(--fg); font-weight: 700; flex: 0 1 auto; }
+  #strip .sep    { color: var(--comment); flex: 0 0 auto; }
+  #strip .artist { color: var(--comment); flex: 1 1 auto; }
+  #strip.action { cursor: pointer; }
+  #strip.action .song { color: var(--purple); }
+
+  /* Album art, only revealed while popped. */
+  #artwrap { padding: 0 14px 14px; }
+  #art {
+    width: 100%; aspect-ratio: 1 / 1; border-radius: 8px;
+    background: var(--purple);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 40px;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.08);
+  }
+  #card.popped #art { animation: artPop .4s cubic-bezier(.2,.9,.3,1.2); }
+  @keyframes artPop { from { opacity: 0; transform: scale(.85); } to { opacity: 1; transform: scale(1); } }
+</style>
+</head>
+<body>
+  <div id="app">
+    <div id="card">
+      <div id="dot" title="Spotify connection status"></div>
+      <div id="strip">
+        <span class="song" id="songName">—</span>
+        <span class="sep">·</span>
+        <span class="artist" id="artistName">Waiting for a song…</span>
+      </div>
+      <div id="artwrap"><div id="art"></div></div>
+    </div>
+  </div>
+
+  <script>
+  /* ================================================================
+     songChanged({ artist, title, art, emoji }) is the integration point
+     for a real now-playing source (a local Spotify/media-player poller,
+     a chat command, etc.) — call it whenever the track changes.
+     Not wired to anything real yet; ?demo=1 exercises it with samples.
+     ================================================================ */
+  const CONFIG = {
+    popMs: 7000,           // how long the full art stays revealed after a change
+    demoIntervalMs: 15000, // ?demo=1 sample interval
+
+    /* ---------- Spotify (see READ-ME-FIRST.txt for setup) ---------- */
+    spotifyClientId: "ee14df25967246ab8c730f66613ee137",
+    spotifyScopes: ["user-read-currently-playing", "user-read-playback-state"],
+    pollMs: 5000,          // how often to check Spotify for a track change
+  };
+
+  const params = new URLSearchParams(location.search);
+  const DEMO   = params.get("demo") === "1";
+  // Redirect URI must EXACTLY match what you registered on Spotify.
+  const REDIRECT = location.origin + location.pathname;
+
+  const cardEl   = document.getElementById("card");
+  const artEl    = document.getElementById("art");
+  const songEl   = document.getElementById("songName");
+  const artistEl = document.getElementById("artistName");
+  const stripEl  = document.getElementById("strip");
+  const dotEl    = document.getElementById("dot");
+
+  function setDot(state) { dotEl.className = state || ""; }
+
+  function applyArt(art) {
+    if (art && /^https?:\/\//.test(art)) {
+      artEl.style.backgroundImage = 'url("' + art + '")';
+      artEl.style.backgroundSize = "cover";
+      artEl.style.backgroundPosition = "center";
+    } else {
+      artEl.style.backgroundImage = "none";
+      artEl.style.background = art || "var(--purple)";
+    }
+  }
+
+  let popTimer = null;
+  function songChanged({ artist, title, art, emoji } = {}) {
+    stripEl.classList.remove("action");
+    songEl.textContent   = title  || "Unknown Song";
+    artistEl.textContent = artist || "Unknown Artist";
+    applyArt(art);
+    artEl.textContent = emoji || "";
+
+    cardEl.classList.remove("popped");
+    void cardEl.offsetWidth; // force reflow so the pop replays even back-to-back
+    cardEl.classList.add("popped");
+
+    clearTimeout(popTimer);
+    popTimer = setTimeout(() => cardEl.classList.remove("popped"), CONFIG.popMs);
+  }
+  window.songChanged = songChanged;
+
+  // Collapsed, non-popped states (gate prompts + "nothing playing").
+  function setStrip(song, artist, { clickable = false } = {}) {
+    clearTimeout(popTimer);
+    cardEl.classList.remove("popped");
+    stripEl.classList.toggle("action", clickable);
+    songEl.textContent = song;
+    artistEl.textContent = artist || "";
+    applyArt(null);
+  }
+
+  if (DEMO) {
+    const samples = [
+      { artist: "Daft Punk",     title: "One More Time",               art: "#bd93f9", emoji: "🎛️" },
+      { artist: "Tame Impala",   title: "The Less I Know The Better",  art: "#ff79c6", emoji: "🌀" },
+      { artist: "MGMT",          title: "Electric Feel",               art: "#8be9fd", emoji: "⚡" },
+      { artist: "CHVRCHES",      title: "The Mother We Share",         art: "#50fa7b", emoji: "🎹" },
+    ];
+    let i = 0;
+    songChanged(samples[i++ % samples.length]);
+    setInterval(() => songChanged(samples[i++ % samples.length]), CONFIG.demoIntervalMs);
+  } else {
+    bootSpotify();
+  }
+
+  /* ==================== SPOTIFY: PKCE OAUTH + POLLING ====================
+     1. Go to https://developer.spotify.com/dashboard -> "Create app"
+        - App name / description: anything
+        - Redirect URI: the EXACT url this page is served from, using
+          127.0.0.1 (NOT "localhost" - Spotify requires the literal loopback
+          IP), e.g. http://127.0.0.1:8777/nowplaying/nowplaying.html
+        - APIs used: Web API
+        Copy the generated **Client ID** into CONFIG.spotifyClientId above.
+     2. Load this page via that same 127.0.0.1 URL (not localhost) so the
+        origin matches what you registered.
+     3. Click the "Connect Spotify" text in the card (Interact -> click, if
+        this is already sitting in an OBS Browser Source). A popup window
+        opens for the Spotify login/approve screen - the overlay itself
+        never navigates away. The popup closes itself automatically once
+        it's done and the overlay starts polling right away.
+        Tokens + a refresh token are stored in localStorage, so it silently
+        refreshes and won't need reconnecting every stream.
+     ======================================================================= */
+  const SP_ACCESS  = "np:sp:access";
+  const SP_REFRESH = "np:sp:refresh";
+  const SP_EXPIRES = "np:sp:expires";
+
+  function randomString(len) {
+    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    const bytes = crypto.getRandomValues(new Uint8Array(len));
+    return Array.from(bytes, (b) => chars[b % chars.length]).join("");
+  }
+  function base64url(buffer) {
+    return btoa(String.fromCharCode(...new Uint8Array(buffer)))
+      .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+  async function challengeFor(verifier) {
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
+    return base64url(digest);
+  }
+
+  function saveTokens({ access_token, refresh_token, expires_in }) {
+    localStorage.setItem(SP_ACCESS, access_token);
+    localStorage.setItem(SP_EXPIRES, String(Date.now() + expires_in * 1000));
+    if (refresh_token) localStorage.setItem(SP_REFRESH, refresh_token);
+  }
+  function clearTokens() {
+    localStorage.removeItem(SP_ACCESS);
+    localStorage.removeItem(SP_REFRESH);
+    localStorage.removeItem(SP_EXPIRES);
+  }
+
+  async function exchangeCode(code, verifier) {
+    const res = await fetch("https://accounts.spotify.com/api/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "authorization_code",
+        code,
+        redirect_uri: REDIRECT,
+        client_id: CONFIG.spotifyClientId,
+        code_verifier: verifier,
+      }),
+    });
+    if (!res.ok) throw new Error("Spotify token exchange failed: " + res.status);
+    saveTokens(await res.json());
+  }
+
+  async function refreshTokens(refreshToken) {
+    const res = await fetch("https://accounts.spotify.com/api/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "refresh_token",
+        refresh_token: refreshToken,
+        client_id: CONFIG.spotifyClientId,
+      }),
+    });
+    if (!res.ok) throw new Error("Spotify token refresh failed: " + res.status);
+    saveTokens(await res.json());
+  }
+
+  async function getAccessToken() {
+    const access = localStorage.getItem(SP_ACCESS);
+    const expiresAt = Number(localStorage.getItem(SP_EXPIRES) || 0);
+    if (access && Date.now() < expiresAt - 60000) return access;
+    const refresh = localStorage.getItem(SP_REFRESH);
+    if (!refresh) return null;
+    await refreshTokens(refresh); // throws (and leaves old tokens) on failure
+    return localStorage.getItem(SP_ACCESS);
+  }
+
+  async function login() {
+    // Open the popup synchronously (still inside the click's user-gesture),
+    // then point it at Spotify once the PKCE challenge is ready - otherwise
+    // Safari treats the async-delayed window.open as a blocked popup.
+    const popup = window.open("about:blank", "spotify-auth", "width=480,height=720");
+
+    const verifier = randomString(64);
+    const state = randomString(16);
+    sessionStorage.setItem("np:sp:verifier", verifier);
+    sessionStorage.setItem("np:sp:state", state);
+    const url = new URL("https://accounts.spotify.com/authorize");
+    url.searchParams.set("client_id", CONFIG.spotifyClientId);
+    url.searchParams.set("response_type", "code");
+    url.searchParams.set("redirect_uri", REDIRECT);
+    url.searchParams.set("scope", CONFIG.spotifyScopes.join(" "));
+    url.searchParams.set("code_challenge_method", "S256");
+    url.searchParams.set("code_challenge", await challengeFor(verifier));
+    url.searchParams.set("state", state);
+
+    if (popup) popup.location.href = url.toString();
+    else location.href = url.toString(); // popup blocked - fall back to a full-page redirect
+  }
+
+  function setGate(mode, note) {
+    setDot("");
+    if (mode === "no-client") setStrip("Add Spotify Client ID", "see READ-ME-FIRST.txt");
+    else if (mode === "connect") setStrip(note || "Connect Spotify", "click to authorize", { clickable: true });
+    else if (mode === "error") setStrip(note || "Spotify connect failed", "click to retry", { clickable: true });
+  }
+
+  stripEl.addEventListener("click", () => {
+    if (!stripEl.classList.contains("action") || !CONFIG.spotifyClientId) return;
+    login();
+  });
+
+  let currentTrackId = null;
+  async function pollNowPlaying() {
+    let token;
+    try {
+      token = await getAccessToken();
+    } catch {
+      clearTokens();
+      setGate("connect", "Spotify session expired");
+      return;
+    }
+    if (!token) { setGate("connect"); return; }
+
+    let res;
+    try {
+      res = await fetch("https://api.spotify.com/v1/me/player/currently-playing?additional_types=track", {
+        headers: { Authorization: "Bearer " + token },
+      });
+    } catch {
+      setDot("err"); // network hiccup - leave the current display up, retry next poll
+      return;
+    }
+
+    if (res.status === 204) { currentTrackId = null; setDot("ok"); setStrip("Nothing playing", ""); return; }
+    if (res.status === 401) { clearTokens(); setGate("connect", "Spotify session expired"); return; }
+    if (!res.ok) { setDot("err"); return; }
+
+    const data = await res.json().catch(() => null);
+    const track = data && data.item;
+    if (!track) { currentTrackId = null; setDot("ok"); setStrip("Nothing playing", ""); return; }
+
+    setDot("ok");
+    if (track.id !== currentTrackId) {
+      currentTrackId = track.id;
+      const images = (track.album && track.album.images) || [];
+      songChanged({
+        artist: (track.artists || []).map((a) => a.name).join(", "),
+        title: track.name,
+        art: images[0] && images[0].url,
+      });
+    }
+  }
+
+  let pollTimer = null;
+  function startPolling() {
+    pollNowPlaying();
+    if (!pollTimer) pollTimer = setInterval(pollNowPlaying, CONFIG.pollMs);
+  }
+
+  // Runs in the MAIN window: react once the popup finishes the auth round-trip.
+  window.addEventListener("message", (ev) => {
+    if (ev.origin !== location.origin || !ev.data) return;
+    if (ev.data.type === "np:sp:connected") startPolling();
+    else if (ev.data.type === "np:sp:auth-error") setGate("error");
+  });
+
+  async function bootSpotify() {
+    const p = new URLSearchParams(location.search);
+    if (p.has("code") || p.has("error")) {
+      const savedState = sessionStorage.getItem("np:sp:state");
+      const verifier    = sessionStorage.getItem("np:sp:verifier");
+      const code  = p.get("code");
+      const state = p.get("state");
+      history.replaceState(null, "", REDIRECT); // strip the auth response from the URL
+      if (code && verifier && state === savedState) {
+        try {
+          await exchangeCode(code, verifier);
+          if (window.opener) {
+            // This load IS the popup, right after Spotify redirected back to
+            // it - hand the result to the real overlay window and disappear.
+            window.opener.postMessage({ type: "np:sp:connected" }, location.origin);
+            window.close();
+            return;
+          }
+        } catch {
+          if (window.opener) {
+            window.opener.postMessage({ type: "np:sp:auth-error" }, location.origin);
+            window.close();
+            return;
+          }
+          setGate("error");
+          return;
+        }
+      } else if (window.opener) {
+        window.close(); // stray/expired popup load - nothing useful to do here
+        return;
+      }
+    }
+
+    if (!CONFIG.spotifyClientId) { setGate("no-client"); return; }
+
+    const token = await getAccessToken().catch(() => null);
+    if (!token) { setGate("connect"); return; }
+
+    startPolling();
+  }
+  </script>
+</body>
+</html>

@@ -1,0 +1,55 @@
+CHANNEL POINT REDEMPTION QUEUE - OBS Overlay
+============================================
+
+  Looking for the other overlays in this repo (Clock, Dice, Facecam,
+  Now Playing, Plinko, POI, Wheel, ...)? Open dashboard.html - it links
+  to every element with a one-click "Copy URL" for OBS.
+
+WHAT THIS IS
+  An OBS overlay that lists your Twitch channel-point redemptions as a
+  queue you check off one by one. Newest on top, oldest at the bottom.
+
+WHAT'S IN THIS FOLDER
+  redemption-queue.html  - the overlay (the only important file)
+  start-windows.bat      - starts the little local server it needs
+  READ-ME-FIRST.txt      - this file
+
+SETUP (about 2 minutes, one time)
+
+  1. Double-click  start-windows.bat
+       - A black window opens and stays open. That's the server.
+       - Leave it open the whole time you're streaming.
+       - If it says Python isn't installed, get it here and re-run:
+         https://www.python.org/downloads/  (tick "Add Python to PATH")
+
+  2. In OBS: add a "Browser Source"
+       - URL:    http://localhost:8777/redemption-queue.html
+       - Width:  500     Height: 900   (adjust to taste)
+       - Check the box: "Control audio via OBS" is not needed.
+
+  3. Turn on interaction so you can click the boxes and log in:
+       - Right-click the source -> Interact
+       - Click "Connect Twitch" and approve. (One time - it remembers you.)
+
+  4. That's it. Redeem a channel-point reward to test.
+       - Click a checkbox to remove that item from the queue.
+
+TIPS
+  - Add  ?demo=1  to the URL to preview with fake redemptions:
+        http://localhost:8777/redemption-queue.html?demo=1
+  - The queue survives OBS refreshes; checked items are gone for good.
+  - Login lasts about 60 days, then just click "Connect Twitch" again.
+
+DUCKING OUT OF THE WAY
+  Once the queue reaches 3 items, it stops sitting there full-time and
+  ducks off the left edge of the screen so only a ~28px sliver of the
+  rightmost card edge stays visible - it was eating too much space.
+  Below 3 items it just stays visible like normal.
+  - Whenever a new redemption comes in, the whole queue floats back into
+    frame (each visible card pops in with a slight stagger), stays for
+    ~5 seconds, then ducks back out if it's still at/above 3 items.
+  - It also floats into frame on its own every 10 minutes so it's never
+    forgotten about for too long.
+  - Tune this in CONFIG at the top of the <script> block:
+    duckThreshold (default 3), wakeMs (5000), periodicMs (10 minutes),
+    floatStaggerMs (90).

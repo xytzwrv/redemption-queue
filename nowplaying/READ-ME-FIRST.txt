@@ -1,0 +1,72 @@
+NOW PLAYING - OBS Overlay (live Spotify)
+==========================================
+
+WHAT THIS IS
+  A small "now playing" card, nothing else on screen. During playback it
+  stays collapsed to a thin strip (artist - song). Whenever the track
+  changes, the full card pops open with real album art for a few
+  seconds, then collapses back down. Reads your currently-playing track
+  straight from your own Spotify account. Same Dracula look as
+  redemption-queue.html.
+
+WHAT'S IN THIS FOLDER
+  nowplaying.html    - the overlay (the only important file)
+  READ-ME-FIRST.txt  - this file
+
+SPOTIFY SETUP (about 5 minutes, one time)
+
+  1. Go to https://developer.spotify.com/dashboard -> log in -> "Create app"
+       - App name / description: anything (e.g. "Slinkystream Now Playing")
+       - Redirect URI: this is the important part - use the LITERAL IP
+         127.0.0.1, not the word "localhost" (Spotify requires the exact
+         loopback IP):
+             http://127.0.0.1:8777/nowplaying/nowplaying.html
+       - Which API/SDKs are you planning to use: Web API
+       - Save.
+  2. Click into the app -> Settings -> copy the Client ID.
+  3. Open nowplaying.html in a text editor and paste it into
+     CONFIG.spotifyClientId near the top of the <script> block.
+  4. Always load/serve this page via 127.0.0.1, not localhost, so the
+     origin matches what you registered in step 1 - e.g. in OBS:
+       - URL:    http://127.0.0.1:8777/nowplaying/nowplaying.html
+       - Width:  320     Height: 260
+  5. Right-click the source -> Interact, then click the "Connect Spotify"
+     text in the card. A small popup window opens for Spotify's login/
+     approve screen - the overlay itself stays put and never navigates
+     away. Approve, and the popup closes itself and polling starts right
+     away - no need to touch the file again after that.
+       - If the popup gets blocked, it falls back to redirecting the
+         overlay page itself, same as before - just click back to your
+         OBS source afterward.
+
+  Tokens (including a refresh token) are stored in the browser's local
+  storage, so it silently refreshes in the background and won't make you
+  reconnect every stream - only if you revoke access on Spotify's end or
+  clear browser storage.
+
+  The little dot in the card's top-right corner shows connection state:
+  grey = not connected yet, green = connected, red = a request just
+  failed (it'll keep retrying on its own).
+
+TIPS
+  - Add  ?demo=1  to the URL to preview the animation with a looping
+    sample playlist instead of real Spotify data:
+        http://127.0.0.1:8777/nowplaying/nowplaying.html?demo=1
+  - Edit CONFIG.popMs to change how long the art stays revealed after a
+    song change (default 7000ms).
+  - Edit CONFIG.pollMs to change how often it checks Spotify for a track
+    change (default 5000ms). Spotify doesn't push updates, so there's
+    always a small delay between a real track change and this catching up.
+  - Playback has to be happening on some Spotify-Connect-aware device
+    logged into the SAME account you authorized here (the desktop app,
+    phone app, a speaker, etc.) - this reads your account's current
+    playback, it doesn't play audio itself.
+
+WIRING UP SOMETHING OTHER THAN SPOTIFY
+  Everything above is one integration built on top of a single hook:
+  window.songChanged({ artist, title, art, emoji }) - art can be a
+  direct image URL (what Spotify's album art uses) or any CSS
+  color/background value. Call it from anything else that knows the
+  current song instead (a different streaming service, a chat command,
+  a companion app) and leave CONFIG.spotifyClientId blank to skip the
+  Spotify code path entirely.
