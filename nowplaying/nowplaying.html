@@ -385,8 +385,10 @@
     else if (mode === "error") setStrip(note || "Spotify connect failed", "click to retry", { clickable: true });
   }
 
+  let loggingIn = false;
   stripEl.addEventListener("click", () => {
-    if (!stripEl.classList.contains("action") || !CONFIG.spotifyClientId) return;
+    if (!stripEl.classList.contains("action") || !CONFIG.spotifyClientId || loggingIn) return;
+    loggingIn = true; // guards against a rapid double-click firing two authorize redirects
     login();
   });
 
