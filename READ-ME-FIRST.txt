@@ -50,6 +50,10 @@ DUCKING OUT OF THE WAY
     ~5 seconds, then ducks back out if it's still at/above 3 items.
   - It also floats into frame on its own every 10 minutes so it's never
     forgotten about for too long.
+  - While you're actually working the queue (Interact -> click), clicking
+    anything in it - the docked tip, a card, a checkbox - keeps it awake
+    for 20 seconds instead of the usual 5, so you have time to click
+    through checking several items off before it ducks back out.
   - Tune this in CONFIG at the top of the <script> block:
-    duckThreshold (default 3), wakeMs (5000), periodicMs (10 minutes),
-    floatStaggerMs (90).
+    duckThreshold (default 3), wakeMs (5000), interactWakeMs (20000),
+    periodicMs (10 minutes), floatStaggerMs (90).

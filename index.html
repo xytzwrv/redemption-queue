@@ -154,6 +154,8 @@
     scopes: ["channel:read:redemptions"],
     duckThreshold: 3,       // queue length at which it starts ducking out of frame
     wakeMs: 5000,           // how long it stays awake before re-docking
+    interactWakeMs: 20000,  // how long a click/interaction keeps it awake - long enough
+                             // to click through checking several items off
     periodicMs: 10 * 60 * 1000, // auto-wake interval so it isn't forgotten
     floatStaggerMs: 90,     // per-card delay when floating in
   };
@@ -219,6 +221,18 @@
       wakeTimer = setTimeout(() => dockEl.classList.add("docked"), ms || CONFIG.wakeMs);
     }
   }
+
+  // Clicking anything in the queue (the docked tip, a card, a checkbox) keeps
+  // it awake for a while - long enough to click through checking several
+  // items off - without replaying the float-in pop on every single click.
+  function keepAwake(ms) {
+    dockEl.classList.remove("docked");
+    clearTimeout(wakeTimer);
+    if (items.length >= CONFIG.duckThreshold) {
+      wakeTimer = setTimeout(() => dockEl.classList.add("docked"), ms);
+    }
+  }
+  dockEl.addEventListener("click", () => keepAwake(CONFIG.interactWakeMs));
 
   function buildCard(it) {
     const el = document.createElement("div");
