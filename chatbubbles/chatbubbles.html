@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chat Bubbles</title>
+<style>
+  /* ---------- Dracula palette (chrome only - gate/status, not the bubbles) ---------- */
+  :root {
+    --bg:      #282a36;
+    --line:    #44475a;
+    --fg:      #f8f8f2;
+    --comment: #6272a4;
+    --green:   #50fa7b;
+    --purple:  #bd93f9;
+    --red:     #ff5555;
+
+    --card:    rgba(40, 42, 54, 0.92);
+    --radius:  12px;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: transparent;              /* OBS overlay: keep transparent */
+    overflow: hidden;
+  }
+
+  #stage { position: fixed; inset: 0; overflow: hidden; pointer-events: none; }
+
+  /* Outer element is physics-owned: the render loop only ever writes its
+     transform. The inner element is CSS-owned: it plays the spawn pop and
+     the end-of-life fade, so the two never fight over the same property. */
+  .bubble { position: absolute; left: 0; top: 0; will-change: transform; }
+  .bubble-inner {
+    background: #fff; color: #111;
+    font-family: ui-monospace, "Cascadia Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    font-size: 14px; line-height: 1.4;
+    border-radius: 10px; padding: 8px 12px;
+    box-shadow: 0 6px 16px rgba(0,0,0,.35);
+    max-width: min(60vw, 420px);
+    word-break: break-word;
+  }
+  .bubble-inner .user { font-weight: 700; }
+  .bubble-inner.pop { animation: bubblePop .16s cubic-bezier(.2,.9,.3,1.2) both; }
+  @keyframes bubblePop { from { opacity: 0; transform: scale(.7); } to { opacity: 1; transform: scale(1); } }
+
+  /* ---------- Status pill ---------- */
+  #status {
+    position: fixed; left: 16px; bottom: 16px;
+    font-family: "Segoe UI", "Inter", system-ui, sans-serif;
+    font-size: 12px; letter-spacing: .5px;
+    padding: 4px 10px; border-radius: 999px;
+    background: var(--card); border: 1px solid var(--line);
+    color: var(--comment);
+  }
+  #status.live { color: var(--green); border-color: var(--green); }
+  #status.err  { color: var(--red);  border-color: var(--red);  }
+
+  /* ---------- Connect gate ---------- */
+  #gate {
+    position: fixed; left: 16px; bottom: 16px; max-width: 360px;
+    font-family: "Segoe UI", "Inter", system-ui, sans-serif; color: var(--fg);
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 18px 20px;
+    box-shadow: 0 6px 18px rgba(0,0,0,.45);
+  }
+  #gate h2 { margin: 0 0 6px; font-size: 16px; color: var(--purple); }
+  #gate p  { margin: 0 0 14px; font-size: 13px; line-height: 1.5; color: var(--comment); }
+  #gate input {
+    width: 100%; background: rgba(0,0,0,.25); border: 1px solid var(--line);
+    border-radius: 8px; padding: 8px 10px; margin-bottom: 10px;
+    color: var(--fg); font-size: 14px;
+  }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--purple); color: var(--bg);
+    border: none; border-radius: 8px; padding: 10px 16px;
+    font-size: 14px; font-weight: 700; cursor: pointer;
+    transition: transform .1s, filter .15s;
+  }
+  .btn:hover { filter: brightness(1.08); }
+  .btn:active { transform: scale(.97); }
+</style>
+</head>
+<body>
+  <div id="stage"></div>
+  <div id="status" style="display:none"></div>
+  <div id="gate" style="display:none">
+    <h2>Connect chat</h2>
+    <p>Type your Twitch channel name to read chat anonymously - no login needed.</p>
+    <input id="channelInput" type="text" placeholder="yourchannel" autocomplete="off" spellcheck="false">
+    <button id="connectBtn" class="btn">Connect Chat</button>
+  </div>
+
+  <script>
+  /* ================================================================
+     SETUP
+     ----------------------------------------------------------------
+     No Twitch login needed - this reads chat anonymously (read-only,
+     IRC-over-WebSocket with a "justinfan" guest nick). Just type your
+     channel name once in the on-screen gate (or add ?channel=yourname
+     to the URL); it's remembered in localStorage after that.
+     ================================================================ */
+  const CONFIG = {
+    ignore: ["nightbot","streamelements","streamlabs","moobot","sery_bot","soundalerts","fossabot","wizebot"],
+    maxMessageChars: 200,     // longer messages are truncated with "…"
+    spawnIntervalMs: 280,     // min ms between bubble spawns (decouples from raw chat rate)
+    perUserCooldownMs: 4000,  // one chatter can't flood the screen solo
+    spawnQueueMax: 24,        // pending backlog cap; overflow drops the oldest queued message
+    maxBubbles: 60,           // hard concurrent cap; new spawns evict the oldest bubble (fast fade)
+    lifespanMs: 20000,        // how long a bubble lives before fading out
+    fadeMs: 600,              // fade-out duration at end of life
+    // A constant one-directional force (buoyancy) combined with ANY energy
+    // loss per bounce (restitution < 1, drag > 0) mathematically converges
+    // to resting pinned against that wall - the classic "bouncing ball on a
+    // floor eventually stops" result, just aimed at the ceiling instead of
+    // the floor. Low buoyancy + high restitution + near-zero drag keeps that
+    // convergence slow enough that bubbles are still visibly bobbing/bouncing
+    // for their whole 20s life instead of freezing solid after a few seconds.
+    buoyancy: 70,              // px/s^2 upward acceleration (no downward gravity - bouncing off
+                                // the ceiling is what brings a bubble back down)
+    driftJitter: 40,           // px/s^2 max random horizontal jitter, for organic drift
+    maxSpeed: 320,             // px/s clamp on both axes
+    wallRestitution: 0.9,      // bounciness off the screen edges
+    bubbleRestitution: 0.8,    // bounciness bubble-vs-bubble
+    airDrag: 0.03,             // per-second multiplicative velocity decay
+    physicsHz: 120,           // fixed-timestep physics rate
+    sound: { enabled: true, volume: 0.18, startFreq: 900, endFreq: 240, duration: 0.09 },
+  };
+
+  const params = new URLSearchParams(location.search);
+  const DEMO   = params.get("demo") === "1";
+  const CHANNEL_KEY = "chatbubbles:channel";
+
+  const stageEl  = document.getElementById("stage");
+  const statusEl = document.getElementById("status");
+  const gateEl   = document.getElementById("gate");
+  const channelInput = document.getElementById("channelInput");
+  const connectBtn   = document.getElementById("connectBtn");
+
+  /* ============================ username color ============================ */
+  const PALETTE = ["#bd93f9","#8be9fd","#50fa7b","#ffb86c","#ff79c6","#f1fa8c","#ff5555"];
+  function colorFor(name) {
+    let h = 0; for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+    return PALETTE[h % PALETTE.length];
+  }
+
+  /* ============================ pop sound (synthesized) ============================ */
+  let actx = null;
+  function ensureAudio() {
+    if (!CONFIG.sound.enabled) return null;
+    if (actx) return actx;
+    try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch { return null; }
+    return actx;
+  }
+  function resumeAudio() { if (actx && actx.state === "suspended") actx.resume().catch(() => {}); }
+  window.addEventListener("pointerdown", resumeAudio);
+  window.addEventListener("keydown", resumeAudio);
+  ensureAudio();
+
+  function playPop() {
+    const ctx = ensureAudio();
+    if (!ctx) return;
+    const S = CONFIG.sound, t0 = ctx.currentTime;
+    const osc = ctx.createOscillator(), gain = ctx.createGain();
+    osc.type = "sine";
+    const startF = S.startFreq * (0.9 + Math.random() * 0.2); // pitch jitter
+    osc.frequency.setValueAtTime(startF, t0);
+    osc.frequency.exponentialRampToValueAtTime(S.endFreq, t0 + S.duration);
+    gain.gain.setValueAtTime(0.0001, t0);
+    gain.gain.exponentialRampToValueAtTime(S.volume, t0 + 0.008);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + S.duration);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(t0);
+    osc.stop(t0 + S.duration + 0.02);
+  }
+
+  /* ============================ spawn queue ============================ */
+  let spawnQueue = [];
+  const lastUserSpawn = new Map();
+
+  function onChat(userId, name, text) {
+    if (CONFIG.ignore.includes((name || "").toLowerCase())) return;
+    const now = performance.now();
+    const last = lastUserSpawn.get(userId) || 0;
+    if (now - last < CONFIG.perUserCooldownMs) return;
+    lastUserSpawn.set(userId, now);
+
+    let clean = (text || "").trim();
+    if (!clean) return;
+    if (clean.length > CONFIG.maxMessageChars) clean = clean.slice(0, CONFIG.maxMessageChars) + "…";
+
+    spawnQueue.push({ userId, name: name || "viewer", text: clean });
+    if (spawnQueue.length > CONFIG.spawnQueueMax) spawnQueue.shift();
+  }
+
+  let lastSpawnAt = 0;
+  function drainSpawnQueue(t) {
+    if (t - lastSpawnAt < CONFIG.spawnIntervalMs) return;
+    const next = spawnQueue.shift();
+    if (!next) return;
+    lastSpawnAt = t;
+    spawnBubble(next.userId, next.name, next.text, t);
+  }
+
+  /* ============================ bubbles ============================ */
+  let bubbles = [];
+  let nextId = 1;
+
+  function evictOldest(t) {
+    const oldest = bubbles.find((b) => b.state !== "dead");
+    if (oldest) startDeath(oldest, t, 150);
+  }
+
+  function spawnBubble(userId, name, text, t) {
+    if (bubbles.length >= CONFIG.maxBubbles) evictOldest(t);
+
+    const el = document.createElement("div");
+    el.className = "bubble";
+    el.style.visibility = "hidden";
+
+    const inner = document.createElement("div");
+    inner.className = "bubble-inner";
+
+    const userSpan = document.createElement("span");
+    userSpan.className = "user";
+    userSpan.textContent = name;
+    userSpan.style.color = colorFor(name);
+
+    const msgSpan = document.createElement("span");
+    msgSpan.className = "msg";
+    msgSpan.textContent = ": " + text;
+
+    inner.append(userSpan, msgSpan);
+    el.appendChild(inner);
+    stageEl.appendChild(el);
+
+    // One synchronous measurement, before the first paint - never read again.
+    const rect = el.getBoundingClientRect();
+    const w = rect.width, h = rect.height;
+    const W = window.innerWidth, H = window.innerHeight;
+    const x = Math.random() * Math.max(1, W - w);
+    const y = H - h - Math.random() * (H * 0.15); // spawn already on-screen, bottom band
+
+    const bubble = {
+      id: nextId++, userId, name, text, el, innerEl: inner,
+      w, h, x, y,
+      vx: (Math.random() - 0.5) * 140,
+      vy: -(100 + Math.random() * 80),
+      mass: Math.min(4, Math.max(0.4, (w * h) / (200 * 40))),
+      bornAt: t, dieAt: 0, state: "alive",
+    };
+
+    el.style.transform = "translate3d(" + x + "px," + y + "px,0)";
+    el.style.visibility = "visible";
+    void inner.offsetWidth; // force reflow so the pop replays even for rapid spawns
+    inner.classList.add("pop");
+
+    bubbles.push(bubble);
+    playPop();
+  }
+
+  function startDeath(b, t, ms) {
+    if (b.state === "dead") return;
+    b.state = "dying";
+    const dur = ms || CONFIG.fadeMs;
+    b.innerEl.style.transition = "opacity " + dur + "ms linear";
+    b.innerEl.style.opacity = "0";
+    b.dieAt = t + dur;
+  }
+  function killBubble(b) { b.state = "dead"; b.el.remove(); }
+
+  // Driven by the same `t` (rAF timestamp) the physics step uses, rather
+  // than an independent performance.now() call, so aging can't drift out
+  // of sync with the rest of the frame loop's notion of "now".
+  function ageAndCullBubbles(t) {
+    let anyDead = false;
+    for (const b of bubbles) {
+      if (b.state === "alive" && t - b.bornAt > CONFIG.lifespanMs - CONFIG.fadeMs) startDeath(b, t);
+      else if (b.state === "dying" && t > b.dieAt) { killBubble(b); anyDead = true; }
+    }
+    if (anyDead) bubbles = bubbles.filter((b) => b.state !== "dead");
+  }
+
+  /* ============================ physics ============================ */
+  function resolvePair(a, b) {
+    const dx = (a.x + a.w / 2) - (b.x + b.w / 2);
+    const dy = (a.y + a.h / 2) - (b.y + b.h / 2);
+    const overlapX = (a.w + b.w) / 2 - Math.abs(dx);
+    const overlapY = (a.h + b.h) / 2 - Math.abs(dy);
+    if (overlapX <= 0 || overlapY <= 0) return;
+
+    const invA = 1 / a.mass, invB = 1 / b.mass, invSum = invA + invB;
+    let nx = 0, ny = 0, overlap;
+    if (overlapX < overlapY) { nx = dx < 0 ? -1 : 1; overlap = overlapX; }
+    else                     { ny = dy < 0 ? -1 : 1; overlap = overlapY; }
+
+    a.x += nx * overlap * (invA / invSum); a.y += ny * overlap * (invA / invSum);
+    b.x -= nx * overlap * (invB / invSum); b.y -= ny * overlap * (invB / invSum);
+
+    const rvx = a.vx - b.vx, rvy = a.vy - b.vy;
+    const relN = rvx * nx + rvy * ny;
+    if (relN < 0) {
+      const j = -(1 + CONFIG.bubbleRestitution) * relN / invSum;
+      a.vx += j * nx * invA; a.vy += j * ny * invA;
+      b.vx -= j * nx * invB; b.vy -= j * ny * invB;
+    }
+  }
+
+  function stepPhysics(dt, W, H) {
+    for (const b of bubbles) {
+      if (b.state === "dead") continue;
+      b.vy -= CONFIG.buoyancy * dt;
+      b.vx += (Math.random() * 2 - 1) * CONFIG.driftJitter * dt;
+      const drag = Math.max(0, 1 - CONFIG.airDrag * dt);
+      b.vx *= drag; b.vy *= drag;
+      const sp = Math.hypot(b.vx, b.vy);
+      if (sp > CONFIG.maxSpeed) { const k = CONFIG.maxSpeed / sp; b.vx *= k; b.vy *= k; }
+      b.x += b.vx * dt; b.y += b.vy * dt;
+
+      if (b.x < 0)      { b.x = 0;     if (b.vx < 0) b.vx = -b.vx * CONFIG.wallRestitution; }
+      if (b.x > W - b.w) { b.x = W - b.w; if (b.vx > 0) b.vx = -b.vx * CONFIG.wallRestitution; }
+      if (b.y < 0)      { b.y = 0;     if (b.vy < 0) b.vy = -b.vy * CONFIG.wallRestitution; }
+      if (b.y > H - b.h) { b.y = H - b.h; if (b.vy > 0) b.vy = -b.vy * CONFIG.wallRestitution; }
+    }
+    for (let i = 0; i < bubbles.length; i++) {
+      if (bubbles[i].state === "dead") continue;
+      for (let j = i + 1; j < bubbles.length; j++) {
+        if (bubbles[j].state === "dead") continue;
+        resolvePair(bubbles[i], bubbles[j]);
+      }
+    }
+  }
+
+  const DT = 1 / CONFIG.physicsHz;
+  let acc = 0, lastFrame = 0;
+  function frame(t) {
+    const dt = Math.min(0.1, (t - lastFrame) / 1000 || 0);
+    lastFrame = t;
+    acc += dt;
+    const W = window.innerWidth, H = window.innerHeight;
+    let steps = 0;
+    while (acc > DT && steps < 10) { stepPhysics(DT, W, H); acc -= DT; steps++; }
+
+    ageAndCullBubbles(t);
+    drainSpawnQueue(t);
+
+    for (const b of bubbles) {
+      if (b.state === "dead") continue;
+      b.el.style.transform = "translate3d(" + b.x + "px," + b.y + "px,0)";
+    }
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  /* ============================ DEMO ============================ */
+  function startDemo() {
+    const names = ["PixelWizard","NightOwl_42","GlitchQueen","zoomies","mod_erin","ferret_king","LurkMaster3000"];
+    const msgs = [
+      "lol", "W", "this is so cool", "POGGERS", "gg", "no cap fr fr",
+      "can we get a shoutout", "🔥🔥🔥", "nice",
+      "that was a really long message just to test wrapping and bubble sizing behavior",
+    ];
+    setInterval(() => {
+      const n = names[Math.floor(Math.random() * names.length)];
+      const m = msgs[Math.floor(Math.random() * msgs.length)];
+      onChat("demo:" + n, n, m);
+    }, 900 + Math.random() * 600);
+  }
+
+  /* ==================== TWITCH CHAT (anonymous IRC read) ==================== */
+  function sanitizeChannel(v) {
+    return (v || "").trim()
+      .replace(/^#/, "")
+      .replace(/^https?:\/\/(www\.)?twitch\.tv\//i, "")
+      .split(/[/?\s]/)[0]
+      .toLowerCase();
+  }
+
+  let channel = sanitizeChannel(params.get("channel") || localStorage.getItem(CHANNEL_KEY) || "");
+
+  function setStatus(text, cls) {
+    statusEl.style.display = "";
+    statusEl.className = cls || "";
+    statusEl.textContent = text;
+  }
+
+  let ws = null, wsRetry = null;
+  function connectIRC() {
+    if (!channel) return;
+    try { ws = new WebSocket("wss://irc-ws.chat.twitch.tv:443"); } catch { return; }
+    setStatus("connecting…", "");
+    ws.onopen = () => {
+      ws.send("CAP REQ :twitch.tv/tags");
+      ws.send("NICK justinfan" + Math.floor(Math.random() * 900000 + 100000));
+      ws.send("JOIN #" + channel);
+      setStatus("● #" + channel, "live");
+      setTimeout(() => (statusEl.style.display = "none"), 3000);
+    };
+    ws.onmessage = (e) => {
+      for (const line of e.data.split("\r\n")) {
+        if (!line) continue;
+        if (line.startsWith("PING")) { ws.send("PONG :tmi.twitch.tv"); continue; }
+        const p = parseLine(line);
+        if (p) onChat(p.userId, p.name, p.msg);
+      }
+    };
+    ws.onclose = () => {
+      statusEl.style.display = "";
+      setStatus("reconnecting…", "err");
+      clearTimeout(wsRetry);
+      wsRetry = setTimeout(connectIRC, 3000);
+    };
+    ws.onerror = () => { try { ws.close(); } catch {} };
+  }
+
+  // Pure parser: IRC line -> {userId,name,msg} for PRIVMSG lines, else null.
+  function parseLine(line) {
+    if (!line.includes("PRIVMSG")) return null;
+    let tags = {}, rest = line;
+    if (line[0] === "@") {
+      const sp = line.indexOf(" ");
+      for (const kv of line.slice(1, sp).split(";")) {
+        const i = kv.indexOf("=");
+        tags[kv.slice(0, i)] = kv.slice(i + 1);
+      }
+      rest = line.slice(sp + 1);
+    }
+    const mi = rest.indexOf("PRIVMSG");
+    const ci = rest.indexOf(":", mi);
+    if (ci < 0) return null;
+    const msg = rest.slice(ci + 1);
+    const userId = tags["user-id"] || ("anon:" + (rest.match(/^:([^!]+)!/) || [])[1]);
+    const name = tags["display-name"] || (rest.match(/^:([^!]+)!/) || [])[1] || "viewer";
+    return { userId, name, msg };
+  }
+
+  connectBtn.addEventListener("click", () => {
+    const v = sanitizeChannel(channelInput.value);
+    if (!v) return;
+    channel = v;
+    localStorage.setItem(CHANNEL_KEY, channel);
+    gateEl.style.display = "none";
+    connectIRC();
+  });
+  channelInput.addEventListener("keydown", (e) => { if (e.key === "Enter") connectBtn.click(); });
+
+  /* ============================ boot ============================ */
+  if (DEMO) {
+    startDemo();
+  } else if (channel) {
+    connectIRC();
+  } else {
+    gateEl.style.display = "";
+  }
+  </script>
+</body>
+</html>
