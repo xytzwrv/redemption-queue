@@ -32,6 +32,16 @@ OBS SETUP
   4. That's it. Chat something to test it, or use ?demo=1 (below).
 
 TIPS
+  - Press H (after clicking the source once via Interact, so it has
+    focus) to show a small mute/size panel - a speaker icon to mute the
+    pop sound, and a slider for bubble size (up to 2x today's size).
+    It's hidden by default and stays hidden on the actual stream output
+    - OBS renders whatever's on the page regardless of Interact mode,
+    so this only ever shows up while you're actively adjusting it.
+    Both settings are remembered (localStorage) after that. Press H
+    again to hide the panel. You can also set them directly in the URL:
+    ?mute=1 and ?size=1.5 (0.5-2). The size slider only affects bubbles
+    spawned from then on - it doesn't resize ones already on screen.
   - Add  ?demo=1  to the URL to preview with simulated chat, no real
     channel needed:
         http://localhost:8777/chatbubbles/chatbubbles.html?demo=1

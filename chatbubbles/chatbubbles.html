@@ -17,6 +17,7 @@
 
     --card:    rgba(40, 42, 54, 0.92);
     --radius:  12px;
+    --bscale:  1;          /* bubble size multiplier, live-adjustable via the H-key panel */
   }
 
   * { box-sizing: border-box; }
@@ -36,10 +37,14 @@
   .bubble-inner {
     background: #fff; color: #111;
     font-family: ui-monospace, "Cascadia Mono", Menlo, Consolas, "Liberation Mono", monospace;
-    font-size: 14px; line-height: 1.4;
-    border-radius: 10px; padding: 8px 12px;
+    /* Scaling via font-size/padding (not transform:scale) keeps the actual
+       layout box - what spawnBubble measures for physics - matching the
+       visual size, instead of a mismatched hitbox. */
+    font-size: calc(14px * var(--bscale));  line-height: 1.4;
+    border-radius: calc(10px * var(--bscale));
+    padding: calc(8px * var(--bscale)) calc(12px * var(--bscale));
     box-shadow: 0 6px 16px rgba(0,0,0,.35);
-    max-width: min(60vw, 420px);
+    max-width: calc(min(60vw, 420px) * var(--bscale));
     word-break: break-word;
   }
   .bubble-inner .user { font-weight: 700; }
@@ -82,6 +87,25 @@
   }
   .btn:hover { filter: brightness(1.08); }
   .btn:active { transform: scale(.97); }
+
+  /* ---------- Settings panel (mute / size) - hidden unless you press H,
+     so it never shows up on the actual stream, only while adjusting it
+     via OBS's Interact window. ---------- */
+  #settings {
+    position: fixed; left: 16px; top: 16px;
+    display: flex; align-items: center; gap: 14px;
+    font-family: "Segoe UI", "Inter", system-ui, sans-serif;
+    font-size: 12px; color: var(--comment);
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 999px; padding: 8px 16px;
+    box-shadow: 0 6px 18px rgba(0,0,0,.45);
+  }
+  #muteBtn {
+    background: transparent; border: none; cursor: pointer;
+    font-size: 17px; line-height: 1; padding: 0; color: var(--fg);
+  }
+  #settings label { display: flex; align-items: center; gap: 8px; cursor: default; }
+  #settings input[type="range"] { width: 100px; accent-color: var(--purple); }
 </style>
 </head>
 <body>
@@ -92,6 +116,12 @@
     <p>Type your Twitch channel name to read chat anonymously - no login needed.</p>
     <input id="channelInput" type="text" placeholder="yourchannel" autocomplete="off" spellcheck="false">
     <button id="connectBtn" class="btn">Connect Chat</button>
+  </div>
+  <div id="settings" style="display:none">
+    <button id="muteBtn" title="Mute pop sound" aria-label="Mute pop sound">🔊</button>
+    <label>Size
+      <input id="sizeSlider" type="range" min="0.5" max="2" step="0.1" value="1">
+    </label>
   </div>
 
   <script>
@@ -132,17 +162,25 @@
     maxAngularSpeed: 6,        // rad/s clamp
     physicsHz: 120,           // fixed-timestep physics rate
     sound: { enabled: true, volume: 0.18, startFreq: 900, endFreq: 240, duration: 0.09 },
+    muted: false,              // mute the pop sound - toggle live via the H-key panel
+    sizeScale: 1,              // bubble size multiplier, 0.5-2 (2 = twice today's size) -
+                                // adjust live via the H-key panel; only affects new spawns
   };
 
   const params = new URLSearchParams(location.search);
   const DEMO   = params.get("demo") === "1";
   const CHANNEL_KEY = "chatbubbles:channel";
+  const MUTED_KEY   = "chatbubbles:muted";
+  const SIZE_KEY    = "chatbubbles:size";
 
-  const stageEl  = document.getElementById("stage");
-  const statusEl = document.getElementById("status");
-  const gateEl   = document.getElementById("gate");
+  const stageEl    = document.getElementById("stage");
+  const statusEl   = document.getElementById("status");
+  const gateEl     = document.getElementById("gate");
   const channelInput = document.getElementById("channelInput");
   const connectBtn   = document.getElementById("connectBtn");
+  const settingsEl = document.getElementById("settings");
+  const muteBtn    = document.getElementById("muteBtn");
+  const sizeSlider = document.getElementById("sizeSlider");
 
   /* ============================ username color ============================ */
   const PALETTE = ["#bd93f9","#8be9fd","#50fa7b","#ffb86c","#ff79c6","#f1fa8c","#ff5555"];
@@ -165,6 +203,7 @@
   ensureAudio();
 
   function playPop() {
+    if (CONFIG.muted) return;
     const ctx = ensureAudio();
     if (!ctx) return;
     const S = CONFIG.sound, t0 = ctx.currentTime;
@@ -180,6 +219,33 @@
     osc.start(t0);
     osc.stop(t0 + S.duration + 0.02);
   }
+
+  /* ============================ settings panel ============================
+     Hidden by default (never clutters the actual stream output - OBS renders
+     whatever's on the page regardless of Interact mode, only clicking needs
+     it) - press H to show it while adjusting mute/size via Interact. */
+  function setMuted(muted) {
+    CONFIG.muted = muted;
+    muteBtn.textContent = muted ? "🔇" : "🔊";
+    localStorage.setItem(MUTED_KEY, muted ? "1" : "0");
+  }
+  function setSize(scale) {
+    scale = Math.min(2, Math.max(0.5, Number(scale) || 1));
+    CONFIG.sizeScale = scale;
+    document.documentElement.style.setProperty("--bscale", scale);
+    sizeSlider.value = scale;
+    localStorage.setItem(SIZE_KEY, String(scale));
+  }
+
+  setMuted(params.get("mute") === "1" || localStorage.getItem(MUTED_KEY) === "1");
+  setSize(params.get("size") || localStorage.getItem(SIZE_KEY) || CONFIG.sizeScale);
+
+  muteBtn.addEventListener("click", () => setMuted(!CONFIG.muted));
+  sizeSlider.addEventListener("input", () => setSize(sizeSlider.value));
+  window.addEventListener("keydown", (e) => {
+    if (e.key.toLowerCase() !== "h") return;
+    settingsEl.style.display = settingsEl.style.display === "none" ? "" : "none";
+  });
 
   /* ============================ spawn queue ============================ */
   let spawnQueue = [];
