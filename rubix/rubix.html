@@ -64,28 +64,77 @@
     position: fixed;
     left: 16px;
     bottom: 16px;
-    width: min(280px, calc(100vw - 32px));
-    padding: 10px 12px;
-    border: 1px solid rgba(255,255,255,.14);
-    border-radius: 14px;
-    background: rgba(10, 12, 18, .52);
+    width: min(390px, calc(100vw - 32px));
+    max-height: min(82vh, 680px);
+    overflow: auto;
+    padding: 12px;
+    border: 1px solid rgba(255,255,255,.16);
+    border-radius: 16px;
+    background: rgba(10, 12, 18, .72);
     color: #f8f8f2;
     font-size: 12px;
     font-weight: 700;
     letter-spacing: .22px;
-    backdrop-filter: blur(8px);
+    backdrop-filter: blur(10px);
     text-shadow: 0 1px 2px rgba(0,0,0,.8);
+    pointer-events: auto;
   }
 
   #controls[hidden] { display: none; }
 
-  #controls label {
+  #controls .panel-title {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 10px;
-    margin-bottom: 8px;
+    margin-bottom: 10px;
     text-transform: uppercase;
+  }
+
+  #controls .hint {
+    color: rgba(248, 248, 242, .72);
+    font-weight: 600;
+    text-transform: none;
+  }
+
+  #controls details {
+    border-top: 1px solid rgba(255,255,255,.12);
+    padding-top: 8px;
+    margin-top: 8px;
+  }
+
+  #controls summary {
+    cursor: pointer;
+    color: #8be9fd;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  #controls .field {
+    display: grid;
+    grid-template-columns: 120px 1fr;
+    align-items: center;
+    gap: 8px;
+    margin: 8px 0;
+  }
+
+  #controls label { text-transform: uppercase; }
+
+  #controls input, #controls select {
+    width: 100%;
+    min-width: 0;
+    border: 1px solid rgba(255,255,255,.16);
+    border-radius: 8px;
+    background: rgba(0,0,0,.34);
+    color: #f8f8f2;
+    padding: 6px 8px;
+    font: inherit;
+    text-shadow: none;
+  }
+
+  #controls input[type="range"] {
+    padding: 0;
+    accent-color: #8be9fd;
   }
 
   #sensitivityValue {
@@ -93,15 +142,38 @@
     font-variant-numeric: tabular-nums;
   }
 
-  #sensitivity {
-    width: 100%;
-    accent-color: #8be9fd;
+  #controls .actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  #controls button {
+    border: 1px solid rgba(255,255,255,.18);
+    border-radius: 10px;
+    background: rgba(139, 233, 253, .18);
+    color: #f8f8f2;
+    padding: 8px 10px;
+    font: inherit;
+    font-weight: 800;
+    cursor: pointer;
+    text-transform: uppercase;
+  }
+
+  #copyStatus {
+    min-height: 16px;
+    margin-top: 8px;
+    color: #50fa7b;
+    font-size: 11px;
+    text-transform: none;
   }
 
   @media (max-width: 420px) {
     #status { right: 10px; bottom: 10px; font-size: 10px; min-width: 104px; }
     body.has-controls #status { bottom: 88px; }
-    #controls { left: 10px; bottom: 10px; width: min(176px, calc(100vw - 20px)); }
+    #controls { left: 10px; bottom: 10px; width: min(280px, calc(100vw - 20px)); max-height: 58vh; }
+    #controls .field { grid-template-columns: 92px 1fr; }
   }
 </style>
 </head>
@@ -111,8 +183,51 @@
 </main>
 <div id="status" aria-live="polite"><span class="dot"></span><span id="statusText">Loading</span></div>
 <div id="controls" hidden>
-  <label for="sensitivity">Sensitivity <span id="sensitivityValue">1.00×</span></label>
-  <input id="sensitivity" type="range" min="0.1" max="4" step="0.05" value="1" />
+  <div class="panel-title">
+    <span>Rubix Settings</span>
+    <span class="hint">click cube to hide/show</span>
+  </div>
+
+  <details open>
+    <summary>Audio</summary>
+    <div class="field"><label for="setting-mic">Mode</label><select id="setting-mic" data-param="mic"><option value="">Normal</option><option value="obs">OBS WebSocket</option><option value="1">Browser mic</option></select></div>
+    <div class="field"><label for="setting-obsInput">OBS input</label><input id="setting-obsInput" data-param="obsInput" placeholder="Mic/Aux" /></div>
+    <div class="field"><label for="setting-obsHost">OBS host</label><input id="setting-obsHost" data-param="obsHost" placeholder="127.0.0.1" /></div>
+    <div class="field"><label for="setting-obsPort">OBS port</label><input id="setting-obsPort" data-param="obsPort" inputmode="numeric" placeholder="4455" /></div>
+    <div class="field"><label for="setting-obsPassword">Password</label><input id="setting-obsPassword" data-param="obsPassword" type="password" placeholder="optional" /></div>
+    <div class="field"><label for="sensitivity">Sensitivity</label><div><input id="sensitivity" data-param="sensitivity" type="range" min="0.1" max="4" step="0.05" value="1" /><span id="sensitivityValue">1.00×</span></div></div>
+    <div class="field"><label for="setting-dbMin">0% dB</label><input id="setting-dbMin" data-param="dbMin" type="number" step="1" placeholder="-60" /></div>
+    <div class="field"><label for="setting-dbMax">100% dB</label><input id="setting-dbMax" data-param="dbMax" type="number" step="1" placeholder="-12" /></div>
+    <div class="field"><label for="setting-minSpeed">0% speed</label><input id="setting-minSpeed" data-param="minSpeed" type="number" step="0.1" placeholder="0.1" /></div>
+    <div class="field"><label for="setting-maxSpeed">100% speed</label><input id="setting-maxSpeed" data-param="maxSpeed" type="number" step="0.5" placeholder="10" /></div>
+  </details>
+
+  <details>
+    <summary>Cube + timing</summary>
+    <div class="field"><label for="setting-scale">Scale</label><input id="setting-scale" data-param="scale" type="number" step="0.05" placeholder="0.82" /></div>
+    <div class="field"><label for="setting-size">Cubie size</label><input id="setting-size" data-param="size" type="number" step="0.05" placeholder="1" /></div>
+    <div class="field"><label for="setting-gap">Gap</label><input id="setting-gap" data-param="gap" type="number" step="0.01" placeholder="0.08" /></div>
+    <div class="field"><label for="setting-solveMs">Solve ms</label><input id="setting-solveMs" data-param="solveMs" type="number" step="1000" placeholder="60000" /></div>
+    <div class="field"><label for="setting-moves">Moves</label><input id="setting-moves" data-param="moves" type="number" step="1" placeholder="24" /></div>
+    <div class="field"><label for="setting-scrambleMs">Scramble ms</label><input id="setting-scrambleMs" data-param="scrambleMs" type="number" step="10" placeholder="220" /></div>
+  </details>
+
+  <details>
+    <summary>Images</summary>
+    <div class="field"><label for="setting-img">All faces</label><input id="setting-img" data-param="img" placeholder="https://.../image.png" /></div>
+    <div class="field"><label for="setting-frontImg">Front</label><input id="setting-frontImg" data-param="frontImg" placeholder="https://..." /></div>
+    <div class="field"><label for="setting-backImg">Back</label><input id="setting-backImg" data-param="backImg" placeholder="https://..." /></div>
+    <div class="field"><label for="setting-leftImg">Left</label><input id="setting-leftImg" data-param="leftImg" placeholder="https://..." /></div>
+    <div class="field"><label for="setting-rightImg">Right</label><input id="setting-rightImg" data-param="rightImg" placeholder="https://..." /></div>
+    <div class="field"><label for="setting-upImg">Top</label><input id="setting-upImg" data-param="upImg" placeholder="https://..." /></div>
+    <div class="field"><label for="setting-downImg">Bottom</label><input id="setting-downImg" data-param="downImg" placeholder="https://..." /></div>
+  </details>
+
+  <div class="actions">
+    <button id="applySettings" type="button">Apply URL</button>
+    <button id="copySettings" type="button">Copy URL</button>
+  </div>
+  <div id="copyStatus" aria-live="polite"></div>
 </div>
 
 <script type="module">
@@ -151,6 +266,10 @@ const statusText = document.getElementById("statusText");
 const controls = document.getElementById("controls");
 const sensitivity = document.getElementById("sensitivity");
 const sensitivityValue = document.getElementById("sensitivityValue");
+const applySettings = document.getElementById("applySettings");
+const copySettings = document.getElementById("copySettings");
+const copyStatus = document.getElementById("copyStatus");
+const settingInputs = [...controls.querySelectorAll("[data-param]")];
 
 function setSensitivity(value) {
   audioSensitivity = THREE.MathUtils.clamp(Number(value) || 1, 0.1, 4);
@@ -158,12 +277,22 @@ function setSensitivity(value) {
   sensitivityValue.textContent = `${audioSensitivity.toFixed(2)}×`;
 }
 
+function seedSettingsPanel() {
+  for (const input of settingInputs) {
+    const key = input.dataset.param;
+    const value = params.get(key);
+    if (value !== null) input.value = value;
+  }
+  if (!params.has("sensitivity")) sensitivity.value = String(audioSensitivity);
+  setSensitivity(sensitivity.value);
+}
+
 if (SHOW_CONTROLS) {
   controls.hidden = false;
   document.body.classList.add("has-controls");
 }
 sensitivity.addEventListener("input", () => setSensitivity(sensitivity.value));
-setSensitivity(audioSensitivity);
+seedSettingsPanel();
 
 function setControlsVisible(visible) {
   controls.hidden = !visible;
@@ -172,6 +301,35 @@ function setControlsVisible(visible) {
 
 canvas.addEventListener("click", () => {
   if (SHOW_CONTROLS) setControlsVisible(controls.hidden);
+});
+
+controls.addEventListener("click", (event) => event.stopPropagation());
+
+function buildSettingsUrl() {
+  const url = new URL(location.href);
+  const next = url.searchParams;
+  if (SHOW_CONTROLS) next.set("controls", "1");
+  for (const input of settingInputs) {
+    const key = input.dataset.param;
+    const value = String(input.value || "").trim();
+    if (value) next.set(key, value);
+    else next.delete(key);
+  }
+  return url;
+}
+
+applySettings.addEventListener("click", () => {
+  location.href = buildSettingsUrl().toString();
+});
+
+copySettings.addEventListener("click", async () => {
+  const url = buildSettingsUrl().toString();
+  try {
+    await navigator.clipboard.writeText(url);
+    copyStatus.textContent = "Copied URL.";
+  } catch {
+    copyStatus.textContent = url;
+  }
 });
 
 const mic = {
