@@ -4,11 +4,11 @@ Rubix Cube Stream Element
 OBS Browser Source URL:
 https://xytzwrv.github.io/redemption-queue/rubix/
 
-Microphone-reactive URL:
-https://xytzwrv.github.io/redemption-queue/rubix/?mic=1
+OBS-safe audio-reactive URL (recommended for OBS Browser Source):
+https://xytzwrv.github.io/redemption-queue/rubix/?mic=obs&obsInput=Mic%2FAux
 
-Direct file URL:
-https://xytzwrv.github.io/redemption-queue/rubix/rubix.html
+Direct browser microphone URL (works in normal browsers, often blocked in OBS Browser Source):
+https://xytzwrv.github.io/redemption-queue/rubix/?mic=1
 
 What it does:
 - Transparent background for stream overlays
@@ -16,11 +16,25 @@ What it does:
 - Face turns are animated as actual 3D rotations
 - Scrambles itself quickly
 - Slowly solves itself over 60 seconds in normal mode
-- With ?mic=1, silence solves very slowly and louder mic input solves faster
+- With ?mic=obs, reads OBS WebSocket audio meter levels instead of requesting browser mic permission
+- With ?mic=1, uses browser getUserMedia microphone permission where supported
 - Randomizes again and loops forever
 
+OBS WebSocket setup for ?mic=obs:
+1. In OBS: Tools > WebSocket Server Settings.
+2. Enable the WebSocket server on port 4455.
+3. Recommended easiest local setup: disable authentication.
+4. Add the Browser Source URL with your input name, for example:
+   https://xytzwrv.github.io/redemption-queue/rubix/?mic=obs&obsInput=Mic%2FAux
+5. If your mic source has a different name, URL-encode it in obsInput.
+
 Optional URL params:
-- mic=1          enable microphone-reactive solve speed
+- mic=obs        OBS-safe mode using OBS WebSocket audio meters
+- obsInput=Mic%2FAux exact OBS input name to listen to; blank uses loudest input
+- obsHost=127.0.0.1 OBS WebSocket host
+- obsPort=4455   OBS WebSocket port
+- obsPassword=... OBS WebSocket password, if auth is enabled
+- mic=1          direct browser microphone mode
 - micSilentMs=9500 milliseconds per solve move while silent
 - micLoudMs=180    milliseconds per solve move while loud
 - size=1         cubie size in Three.js world units
@@ -29,6 +43,3 @@ Optional URL params:
 - solveMs=60000  normal-mode solve duration in milliseconds
 - moves=30       number of scramble moves
 - scrambleMs=220 speed per scramble move
-
-Example:
-https://xytzwrv.github.io/redemption-queue/rubix/?mic=1&scale=0.75&micSilentMs=10000&micLoudMs=160
