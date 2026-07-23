@@ -76,9 +76,14 @@ const params = new URLSearchParams(location.search);
 const SOLVE_MS = Number(params.get("solveMs")) || 60000;
 const SCRAMBLE_MS = Number(params.get("scrambleMs")) || 220;
 const SCRAMBLE_MOVES = Number(params.get("moves")) || 24;
-const MIC_MODE = /^(1|true|yes|on)$/i.test(params.get("mic") || params.get("microphone") || "");
+const micParam = params.get("mic") || params.get("microphone") || "";
+const MIC_MODE = /^(1|true|yes|on)$/i.test(micParam);
+const OBSWS_MODE = /^(obs|obsws|websocket)$/i.test(micParam) || /^(1|true|yes|on)$/i.test(params.get("obsws") || "");
 const MIC_SILENT_MOVE_MS = Number(params.get("micSilentMs")) || 9500;
 const MIC_LOUD_MOVE_MS = Number(params.get("micLoudMs")) || 180;
+const OBSWS_URL = params.get("obsWsUrl") || `ws://${params.get("obsHost") || "127.0.0.1"}:${params.get("obsPort") || "4455"}`;
+const OBSWS_INPUT = params.get("obsInput") || params.get("input") || "";
+const OBSWS_PASSWORD = params.get("obsPassword") || params.get("password") || "";
 const scaleParam = Number(params.get("scale"));
 const CUBE_SCALE = Number.isFinite(scaleParam) && scaleParam > 0 ? scaleParam : 0.82;
 const CUBIE_SIZE = Number(params.get("size")) || 1;
@@ -95,6 +100,13 @@ const mic = {
   analyser: null,
   data: null,
   level: 0,
+};
+
+const obsws = {
+  state: OBSWS_MODE ? "connecting" : "off",
+  socket: null,
+  level: 0,
+  retryAt: 0,
 };
 
 async function initMic() {
@@ -142,6 +154,77 @@ function readMicLevel() {
   const normalized = THREE.MathUtils.clamp((rms - 0.012) / 0.17, 0, 1);
   mic.level = mic.level * 0.82 + normalized * 0.18;
   return mic.level;
+}
+
+function base64FromBuffer(buffer) {
+  return btoa(String.fromCharCode(...new Uint8Array(buffer)));
+}
+
+async function obsAuthResponse(password, salt, challenge) {
+  const encoder = new TextEncoder();
+  const secret = await crypto.subtle.digest("SHA-256", encoder.encode(password + salt));
+  const auth = await crypto.subtle.digest("SHA-256", encoder.encode(base64FromBuffer(secret) + challenge));
+  return base64FromBuffer(auth);
+}
+
+function extractObsLevel(eventData) {
+  const target = OBSWS_INPUT.trim().toLowerCase();
+  let best = 0;
+  for (const input of eventData?.inputs || []) {
+    if (target && String(input.inputName || "").toLowerCase() !== target) continue;
+    const levels = Array.isArray(input.inputLevelsMul) ? input.inputLevelsMul.flat(Infinity) : [];
+    for (const value of levels) {
+      const number = Number(value);
+      if (Number.isFinite(number)) best = Math.max(best, number);
+    }
+  }
+  return THREE.MathUtils.clamp(best, 0, 1);
+}
+
+function connectObsWebSocket() {
+  if (!OBSWS_MODE || obsws.socket || performance.now() < obsws.retryAt) return;
+  obsws.state = "connecting";
+  const socket = new WebSocket(OBSWS_URL);
+  obsws.socket = socket;
+
+  socket.addEventListener("open", () => { obsws.state = "hello"; });
+  socket.addEventListener("close", () => {
+    obsws.socket = null;
+    obsws.state = "closed";
+    obsws.retryAt = performance.now() + 5000;
+  });
+  socket.addEventListener("error", () => { obsws.state = "error"; });
+  socket.addEventListener("message", async (message) => {
+    let packet;
+    try { packet = JSON.parse(message.data); } catch { return; }
+
+    if (packet.op === 0) {
+      const identify = { rpcVersion: 1, eventSubscriptions: 1 << 16 };
+      const auth = packet.d?.authentication;
+      if (auth?.challenge && auth?.salt) {
+        if (!OBSWS_PASSWORD) {
+          obsws.state = "needs password";
+          socket.close();
+          return;
+        }
+        identify.authentication = await obsAuthResponse(OBSWS_PASSWORD, auth.salt, auth.challenge);
+      }
+      socket.send(JSON.stringify({ op: 1, d: identify }));
+    } else if (packet.op === 2) {
+      obsws.state = "listening";
+    } else if (packet.op === 5 && packet.d?.eventType === "InputVolumeMeters") {
+      const level = extractObsLevel(packet.d.eventData);
+      obsws.level = obsws.level * 0.72 + level * 0.28;
+    }
+  });
+}
+
+function readAudioLevel() {
+  if (OBSWS_MODE) {
+    connectObsWebSocket();
+    return obsws.state === "listening" ? obsws.level : 0;
+  }
+  return mic.state === "listening" ? readMicLevel() : 0;
 }
 
 const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, premultipliedAlpha: false });
@@ -332,21 +415,25 @@ function updateStatus(now) {
       if (mic.state === "listening") {
         statusText.textContent = `Mic solve ${Math.round(mic.level * 100)}%`;
       } else {
-        statusText.textContent = `Mic ${mic.state}`;
+        statusText.textContent = mic.state === "blocked" ? "Use mic=obs" : `Mic ${mic.state}`;
       }
+    } else if (OBSWS_MODE) {
+      statusText.textContent = obsws.state === "listening"
+        ? `OBS mic ${Math.round(obsws.level * 100)}%`
+        : `OBS ${obsws.state}`;
     } else {
       const remaining = Math.max(0, SOLVE_MS - (now - phaseStart));
       const seconds = Math.ceil(remaining / 1000);
       statusText.textContent = `Solving ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
     }
   } else {
-    statusText.textContent = MIC_MODE ? `Scrambling • mic` : "Scrambling";
+    statusText.textContent = (MIC_MODE || OBSWS_MODE) ? `Scrambling • audio` : "Scrambling";
   }
 }
 
 function currentMoveDuration() {
-  if (phase !== "solve" || !MIC_MODE) return phase === "solve" ? SOLVE_MS / queue.length : SCRAMBLE_MS;
-  const level = mic.state === "listening" ? readMicLevel() : 0;
+  if (phase !== "solve" || (!MIC_MODE && !OBSWS_MODE)) return phase === "solve" ? SOLVE_MS / queue.length : SCRAMBLE_MS;
+  const level = readAudioLevel();
   const response = Math.pow(level, 0.62);
   return MIC_SILENT_MOVE_MS - (MIC_SILENT_MOVE_MS - MIC_LOUD_MOVE_MS) * response;
 }
@@ -402,6 +489,7 @@ window.addEventListener("keydown", (event) => {
 });
 
 initMic();
+connectObsWebSocket();
 requestAnimationFrame(animate);
 </script>
 </body>
