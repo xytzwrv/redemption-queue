@@ -1,0 +1,53 @@
+HYPE-O-METER - OBS Overlay
+============================
+
+WHAT THIS IS
+  A small Dracula-themed card showing your live viewer count as a
+  gauge that climbs through hype tiers as the stream fills up:
+
+    quiet -> warming up -> buzzing -> hype -> popping off ->
+    going off -> ON FIRE (pulsing glow at the top tier)
+
+  The bar fills on a log scale, so movement is visible whether you've
+  got 8 viewers or 800 - it isn't calibrated to any one channel size.
+  Also tracks the session's peak viewer count in the corner.
+
+  This one DOES need a one-time Twitch login (unlike chatbubbles/
+  pinned-message/3x3). Viewer count isn't in anonymous chat - it's
+  Twitch's Helix API, which requires a real access token even though
+  no special permission/scope is requested.
+
+WHAT'S IN THIS FOLDER
+  hypometer.html     - the overlay (the only important file)
+  READ-ME-FIRST.txt  - this file
+
+SETUP
+  1. Go to https://dev.twitch.tv/console/apps -> "Register Your Application"
+       - Name:      anything (e.g. "Hype-O-Meter")
+       - OAuth Redirect URLs: the EXACT url this page is served from, e.g.
+                    http://localhost:8777/hypometer/hypometer.html
+       - Category:  Broadcasting Suite / Application Integration
+       - Client Type: Public
+     Copy the generated Client ID into CONFIG.clientId in hypometer.html.
+  2. Start the local server (double-click start-windows.bat one folder
+     up, or `python3 -m http.server 8777` from the repo root).
+  3. Add a "Browser Source" in OBS:
+       - URL:    http://localhost:8777/hypometer/hypometer.html
+       - Width:  260   Height: 140   (it's a small corner widget)
+  4. Right-click -> Interact, click "Connect Twitch" (one time - the
+     token is remembered in this browser source after that).
+  5. That's it. It polls your own channel's live viewer count every
+     15 seconds (CONFIG.pollMs) while you're live, and shows "offline"
+     otherwise.
+
+TIPS
+  - Add ?demo=1 to the URL to preview with a simulated, wandering
+    viewer count, no real channel or login needed:
+        http://localhost:8777/hypometer/hypometer.html?demo=1
+  - Tune CONFIG.tiers in hypometer.html to change the thresholds,
+    labels, or colors for each hype level, and CONFIG.maxScale to
+    change what viewer count counts as "meter full."
+  - The card sits top-right by default - move it by editing #meter's
+    top/right in the <style> block.
+  - No scopes are requested during login - this overlay can only ever
+    read public stream info (viewer count), nothing else.

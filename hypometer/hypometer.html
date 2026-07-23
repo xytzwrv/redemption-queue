@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hype-O-Meter</title>
+<style>
+  /* ---------- Dracula palette (same values the other Dracula overlays use) ---------- */
+  :root {
+    --bg:      #282a36;
+    --line:    #44475a;
+    --fg:      #f8f8f2;
+    --comment: #6272a4;
+    --green:   #50fa7b;
+    --purple:  #bd93f9;
+    --pink:    #ff79c6;
+    --cyan:    #8be9fd;
+    --yellow:  #f1fa8c;
+    --orange:  #ffb86c;
+    --red:     #ff5555;
+
+    --card:    rgba(40, 42, 54, 0.92);
+    --radius:  14px;
+    --accent:  var(--comment);   /* current tier color, set from JS */
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: transparent;   /* OBS overlay: keep transparent */
+    overflow: hidden;
+    font-family: "Segoe UI", "Inter", system-ui, sans-serif;
+    color: var(--fg);
+  }
+
+  /* ---------- the meter card ---------- */
+  #meter {
+    position: fixed; top: 20px; right: 20px;
+    width: 260px;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: 0 14px 40px rgba(0,0,0,.5), 0 0 0 1px var(--accent) inset;
+    padding: 14px 16px 16px;
+    transition: box-shadow .4s ease;
+  }
+  #meter.fire { animation: firePulse 1.1s ease-in-out infinite; }
+  @keyframes firePulse {
+    0%, 100% { box-shadow: 0 14px 40px rgba(0,0,0,.5), 0 0 0 1px var(--accent) inset, 0 0 18px -2px var(--accent); }
+    50%      { box-shadow: 0 14px 40px rgba(0,0,0,.5), 0 0 0 1px var(--accent) inset, 0 0 34px 4px var(--accent); }
+  }
+
+  #meter .row1 { display: flex; align-items: baseline; gap: 8px; }
+  #meter .title {
+    font-size: 11px; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase;
+    color: var(--comment);
+  }
+  #meter .count {
+    margin-left: auto; font-size: 26px; font-weight: 800; color: var(--accent);
+    font-variant-numeric: tabular-nums;
+    transition: color .4s ease;
+  }
+  #meter .count small { font-size: 12px; font-weight: 600; color: var(--comment); margin-left: 3px; }
+
+  #meter .label {
+    margin-top: 2px; font-size: 13px; font-weight: 700; color: var(--accent);
+    transition: color .4s ease;
+  }
+
+  #meter .track {
+    margin-top: 10px; height: 12px; border-radius: 999px;
+    background: var(--line); overflow: hidden;
+  }
+  #meter .fill {
+    height: 100%; border-radius: 999px; width: 0%;
+    background: var(--accent);
+    transition: width .6s cubic-bezier(.2,.8,.2,1), background-color .4s ease;
+  }
+
+  #meter .foot {
+    margin-top: 8px; display: flex; justify-content: space-between;
+    font-size: 11px; color: var(--comment);
+  }
+
+  /* ---------- status pill + connect gate (bottom-left, out of the way) ---------- */
+  #status {
+    position: fixed; left: 16px; bottom: 16px;
+    font-size: 12px; letter-spacing: .5px;
+    padding: 4px 10px; border-radius: 999px;
+    background: var(--card); border: 1px solid var(--line);
+    color: var(--comment);
+  }
+  #status.live { color: var(--green); border-color: var(--green); }
+  #status.err  { color: var(--red);  border-color: var(--red);  }
+
+  #gate {
+    position: fixed; left: 16px; bottom: 16px; max-width: 380px;
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 18px 20px;
+    box-shadow: 0 6px 18px rgba(0,0,0,.45);
+  }
+  #gate h2 { margin: 0 0 6px; font-size: 16px; color: var(--purple); }
+  #gate p  { margin: 0 0 14px; font-size: 13px; line-height: 1.5; color: var(--comment); }
+  #gate code { color: var(--cyan); background: rgba(0,0,0,.25); padding: 1px 5px; border-radius: 5px; word-break: break-all; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--purple); color: var(--bg);
+    border: none; border-radius: 8px; padding: 10px 16px;
+    font-size: 14px; font-weight: 700; cursor: pointer;
+    transition: transform .1s, filter .15s;
+  }
+  .btn:hover { filter: brightness(1.08); }
+  .btn:active { transform: scale(.97); }
+</style>
+</head>
+<body>
+  <div id="meter">
+    <div class="row1">
+      <span class="title">Hype-O-Meter</span>
+      <span class="count" id="meterCount">–</span>
+    </div>
+    <div class="label" id="meterLabel">connecting…</div>
+    <div class="track"><div class="fill" id="meterFill"></div></div>
+    <div class="foot"><span>peak: <span id="meterPeak">0</span></span><span id="meterStream"></span></div>
+  </div>
+
+  <div id="status" style="display:none"></div>
+  <div id="gate" style="display:none"></div>
+
+  <script>
+  /* ================================================================
+     WHAT THIS IS
+     ----------------------------------------------------------------
+     Live viewer count, shown as a Dracula-themed gauge that climbs
+     through hype tiers (quiet -> warming up -> ... -> ON FIRE) as
+     your stream fills up, complete with a pulsing glow at the top
+     tier.
+
+     Unlike chatbubbles/pinned-message, viewer count isn't exposed
+     over anonymous chat - it's Twitch Helix's /streams endpoint,
+     which needs a real (if scope-less) access token. So this one
+     needs a one-time Twitch login, same flow as Redemption Queue:
+
+     SETUP (one time)
+     ----------------------------------------------------------------
+     1. Go to https://dev.twitch.tv/console/apps  ->  "Register Your Application"
+        - Name:          anything (e.g. "Hype-O-Meter")
+        - OAuth Redirect URLs: the EXACT url this page is served from, e.g.
+                         http://localhost:8777/hypometer/hypometer.html
+        - Category:      Broadcasting Suite / Application Integration
+        - Client Type:   Public
+        Copy the generated **Client ID** into CONFIG.clientId below.
+     2. Serve this file over http (not file://). A redirect to file:// is
+        rejected by Twitch. The included launch config serves it on :8777.
+     3. Point OBS Browser Source at the same URL and click "Connect Twitch"
+        via OBS's Interact window (one time; the token is remembered).
+     No scopes are requested - viewer count is public stream data, so the
+     login is just to get Twitch to hand over any valid token.
+     ================================================================ */
+  const CONFIG = {
+    clientId: "",     // <-- paste your Twitch app Client ID here
+    scopes: [],        // viewer count needs no special permissions
+    pollMs: 15000,      // how often to re-check viewer count
+    maxScale: 2000,     // assumed "meter full" viewer count (log-scaled, so small
+                         // channels still see real movement, not a sliver)
+    tiers: [
+      { min: 0,    label: "quiet",       color: "var(--comment)" },
+      { min: 5,    label: "warming up",  color: "var(--cyan)" },
+      { min: 25,   label: "buzzing",     color: "var(--green)" },
+      { min: 75,   label: "hype",        color: "var(--yellow)" },
+      { min: 200,  label: "popping off", color: "var(--orange)" },
+      { min: 500,  label: "going off",   color: "var(--pink)" },
+      { min: 1000, label: "ON FIRE 🔥",  color: "var(--red)" },
+    ],
+  };
+
+  const params    = new URLSearchParams(location.search);
+  const DEMO      = params.get("demo") === "1";
+  const REDIRECT  = location.origin + location.pathname;
+  const TOKEN_KEY = "hypeometer:token";
+
+  const meterEl   = document.getElementById("meter");
+  const countEl   = document.getElementById("meterCount");
+  const labelEl   = document.getElementById("meterLabel");
+  const fillEl    = document.getElementById("meterFill");
+  const peakEl    = document.getElementById("meterPeak");
+  const streamEl  = document.getElementById("meterStream");
+  const statusEl  = document.getElementById("status");
+  const gateEl    = document.getElementById("gate");
+
+  function setStatus(text, cls) {
+    statusEl.style.display = "";
+    statusEl.className = cls || "";
+    statusEl.textContent = text;
+  }
+
+  function tierFor(viewers) {
+    let t = CONFIG.tiers[0];
+    for (const tier of CONFIG.tiers) if (viewers >= tier.min) t = tier;
+    return t;
+  }
+
+  let peak = 0;
+  function render(viewers, live) {
+    peak = Math.max(peak, viewers);
+    const tier = tierFor(viewers);
+    const pct = Math.max(0, Math.min(1, Math.log10(viewers + 1) / Math.log10(CONFIG.maxScale + 1)));
+
+    countEl.innerHTML = live ? String(viewers) + "<small>watching</small>" : "–";
+    labelEl.textContent = live ? tier.label : "offline";
+    fillEl.style.width = (live ? pct * 100 : 0) + "%";
+    peakEl.textContent = String(peak);
+    streamEl.textContent = live ? "🔴 live" : "";
+
+    const color = live ? tier.color : "var(--comment)";
+    meterEl.style.setProperty("--accent", color);
+    meterEl.classList.toggle("fire", live && tier.label.startsWith("ON FIRE"));
+  }
+
+  render(0, false);
+
+  /* ============================ demo mode (no real channel needed) ============================ */
+  if (DEMO) {
+    setStatus("DEMO MODE", "live");
+    let v = 3, dir = 1;
+    render(v, true);
+    setInterval(() => {
+      dir = Math.random() < 0.08 ? -dir : dir;
+      v = Math.max(0, v + dir * Math.ceil(Math.random() * v * 0.35 + 1));
+      if (v > 1400) dir = -1;
+      render(v, true);
+    }, 1200);
+  } else {
+    boot();
+  }
+
+  /* ==================== OAUTH + POLLING ==================== */
+  async function boot() {
+    // 1) Capture token returned in the URL fragment after Twitch redirect.
+    if (location.hash.includes("access_token")) {
+      const h = new URLSearchParams(location.hash.slice(1));
+      const tok = h.get("access_token");
+      const savedState = sessionStorage.getItem("hypeometer:state");
+      if (tok && h.get("state") === savedState) {
+        localStorage.setItem(TOKEN_KEY, tok);
+      }
+      history.replaceState(null, "", REDIRECT);   // strip token from the URL
+    }
+
+    if (!CONFIG.clientId) { showGate("no-client"); return; }
+
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (!token) { showGate("connect"); return; }
+
+    // 2) Validate the stored token (also gives us the broadcaster's login).
+    let me;
+    try {
+      const r = await fetch("https://id.twitch.tv/oauth2/validate", {
+        headers: { Authorization: "OAuth " + token },
+      });
+      if (!r.ok) throw new Error("invalid");
+      me = await r.json();   // { user_id, login, scopes, ... }
+    } catch {
+      localStorage.removeItem(TOKEN_KEY);
+      showGate("connect", "Session expired — reconnect.");
+      return;
+    }
+
+    gateEl.style.display = "none";
+    pollViewers(token, me.login);
+  }
+
+  function showGate(mode, note) {
+    gateEl.style.display = "";
+    if (mode === "no-client") {
+      gateEl.innerHTML =
+        '<h2>Almost there</h2>' +
+        '<p>Add your Twitch <b>Client ID</b> to <code>CONFIG.clientId</code> in this file, ' +
+        'and register this redirect URL on your Twitch app:</p>' +
+        '<p><code>' + REDIRECT + '</code></p>';
+      return;
+    }
+    gateEl.innerHTML =
+      '<h2>Connect your Twitch</h2>' +
+      '<p>' + (note || "Authorize once to start reading your live viewer count. No special permissions requested.") + '</p>';
+    const btn = document.createElement("button");
+    btn.className = "btn";
+    btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="#282a36"><path d="M4 2 2 6v14h5v2h3l2-2h4l5-5V2H4Zm2 2h13v9l-3 3h-4l-2 2v-2H6V4Zm5 3v5h2V7h-2Zm5 0v5h2V7h-2Z"/></svg> Connect Twitch';
+    btn.onclick = login;
+    gateEl.appendChild(btn);
+  }
+
+  function login() {
+    const state = Math.random().toString(36).slice(2);
+    sessionStorage.setItem("hypeometer:state", state);
+    const url = "https://id.twitch.tv/oauth2/authorize"
+      + "?response_type=token"
+      + "&client_id=" + encodeURIComponent(CONFIG.clientId)
+      + "&redirect_uri=" + encodeURIComponent(REDIRECT)
+      + "&scope=" + encodeURIComponent(CONFIG.scopes.join(" "))
+      + "&state=" + state;
+    location.href = url;
+  }
+
+  async function pollViewers(token, login) {
+    const headers = { "Client-Id": CONFIG.clientId, Authorization: "Bearer " + token };
+
+    async function tick() {
+      try {
+        const r = await fetch("https://api.twitch.tv/helix/streams?user_login=" + encodeURIComponent(login), { headers });
+        if (!r.ok) throw new Error("http " + r.status);
+        const { data } = await r.json();
+        if (data && data.length) {
+          render(data[0].viewer_count, true);
+          setStatus("● " + login, "live");
+        } else {
+          render(0, false);
+          setStatus("○ " + login + " offline", "");
+        }
+        setTimeout(() => (statusEl.style.display = "none"), 3000);
+      } catch (err) {
+        setStatus("poll failed — retrying", "err");
+        console.error("Hype-O-Meter poll failed:", err);
+      }
+    }
+
+    tick();
+    setInterval(tick, CONFIG.pollMs);
+  }
+  </script>
+</body>
+</html>
