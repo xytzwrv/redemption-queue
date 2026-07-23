@@ -58,8 +58,48 @@
 
   #status.scrambling .dot { background: #ffb86c; }
 
+  #controls {
+    position: fixed;
+    left: 16px;
+    bottom: 16px;
+    width: min(280px, calc(100vw - 32px));
+    padding: 10px 12px;
+    border: 1px solid rgba(255,255,255,.14);
+    border-radius: 14px;
+    background: rgba(10, 12, 18, .52);
+    color: #f8f8f2;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: .22px;
+    backdrop-filter: blur(8px);
+    text-shadow: 0 1px 2px rgba(0,0,0,.8);
+  }
+
+  #controls[hidden] { display: none; }
+
+  #controls label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+  }
+
+  #sensitivityValue {
+    color: #8be9fd;
+    font-variant-numeric: tabular-nums;
+  }
+
+  #sensitivity {
+    width: 100%;
+    accent-color: #8be9fd;
+  }
+
   @media (max-width: 420px) {
     #status { right: 10px; bottom: 10px; font-size: 10px; min-width: 104px; }
+    body.has-controls #status { bottom: 88px; }
+    #controls { left: 10px; bottom: 10px; width: min(176px, calc(100vw - 20px)); }
   }
 </style>
 </head>
@@ -68,6 +108,10 @@
   <canvas id="rubixCanvas" aria-hidden="true"></canvas>
 </main>
 <div id="status" aria-live="polite"><span class="dot"></span><span id="statusText">Loading</span></div>
+<div id="controls" hidden>
+  <label for="sensitivity">Sensitivity <span id="sensitivityValue">1.00×</span></label>
+  <input id="sensitivity" type="range" min="0.1" max="4" step="0.05" value="1" />
+</div>
 
 <script type="module">
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.166.1/build/three.module.js";
@@ -84,6 +128,9 @@ const MIC_LOUD_MOVE_MS = Number(params.get("micLoudMs")) || 180;
 const OBSWS_URL = params.get("obsWsUrl") || `ws://${params.get("obsHost") || "127.0.0.1"}:${params.get("obsPort") || "4455"}`;
 const OBSWS_INPUT = params.get("obsInput") || params.get("input") || "";
 const OBSWS_PASSWORD = params.get("obsPassword") || params.get("password") || "";
+const SHOW_CONTROLS = /^(1|true|yes|on)$/i.test(params.get("controls") || params.get("slider") || "");
+const initialSensitivity = Number(params.get("sensitivity"));
+let audioSensitivity = Number.isFinite(initialSensitivity) && initialSensitivity > 0 ? initialSensitivity : 1;
 const scaleParam = Number(params.get("scale"));
 const CUBE_SCALE = Number.isFinite(scaleParam) && scaleParam > 0 ? scaleParam : 0.82;
 const CUBIE_SIZE = Number(params.get("size")) || 1;
@@ -94,6 +141,22 @@ const HALF = CUBIE_SIZE / 2;
 const canvas = document.getElementById("rubixCanvas");
 const status = document.getElementById("status");
 const statusText = document.getElementById("statusText");
+const controls = document.getElementById("controls");
+const sensitivity = document.getElementById("sensitivity");
+const sensitivityValue = document.getElementById("sensitivityValue");
+
+function setSensitivity(value) {
+  audioSensitivity = THREE.MathUtils.clamp(Number(value) || 1, 0.1, 4);
+  sensitivity.value = String(audioSensitivity);
+  sensitivityValue.textContent = `${audioSensitivity.toFixed(2)}×`;
+}
+
+if (SHOW_CONTROLS) {
+  controls.hidden = false;
+  document.body.classList.add("has-controls");
+}
+sensitivity.addEventListener("input", () => setSensitivity(sensitivity.value));
+setSensitivity(audioSensitivity);
 
 const mic = {
   state: MIC_MODE ? "starting" : "off",
@@ -220,11 +283,14 @@ function connectObsWebSocket() {
 }
 
 function readAudioLevel() {
+  let level = 0;
   if (OBSWS_MODE) {
     connectObsWebSocket();
-    return obsws.state === "listening" ? obsws.level : 0;
+    level = obsws.state === "listening" ? obsws.level : 0;
+  } else {
+    level = mic.state === "listening" ? readMicLevel() : 0;
   }
-  return mic.state === "listening" ? readMicLevel() : 0;
+  return THREE.MathUtils.clamp(level * audioSensitivity, 0, 1);
 }
 
 const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, premultipliedAlpha: false });
