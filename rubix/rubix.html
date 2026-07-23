@@ -3,15 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Self-Solving Rubix Cube Stream Element</title>
-<meta name="description" content="Transparent OBS-ready 3D Rubix cube that scrambles, then slowly solves itself over one minute, looping forever." />
+<title>Three.js Rubix Cube Stream Element</title>
+<meta name="description" content="Transparent OBS-ready Three.js Rubix cube that scrambles, slowly solves over a minute, and loops." />
 <style>
-  :root {
-    --cubie: 48px;
-    --gap: 5px;
-    --shadow: drop-shadow(0 18px 26px rgba(0,0,0,.45));
-  }
-
   * { box-sizing: border-box; }
 
   html, body {
@@ -24,41 +18,12 @@
     font-family: "Segoe UI", Inter, system-ui, sans-serif;
   }
 
-  main {
+  main, canvas {
     position: fixed;
     inset: 0;
-    display: grid;
-    place-items: center;
-    perspective: 940px;
-    perspective-origin: 50% 48%;
-    pointer-events: none;
-  }
-
-  #scene {
-    position: relative;
-    width: 0;
-    height: 0;
-    transform-style: preserve-3d;
-    filter: var(--shadow);
-  }
-
-  .cubie {
-    position: absolute;
-    top: 0;
-    left: 0;
-    transform-style: preserve-3d;
-    will-change: transform;
-  }
-
-  .face {
-    position: absolute;
-    top: 0;
-    left: 0;
-    border-radius: 14%;
-    box-shadow:
-      inset 0 0 0 2px rgba(0,0,0,.50),
-      inset 8px 10px 16px rgba(255,255,255,.10),
-      inset -10px -12px 18px rgba(0,0,0,.26);
+    width: 100%;
+    height: 100%;
+    display: block;
   }
 
   #status {
@@ -93,238 +58,271 @@
 
   #status.scrambling .dot { background: #ffb86c; }
 
-  @media (max-width: 520px) {
-    :root { --cubie: 42px; --gap: 3px; }
+  @media (max-width: 420px) {
     #status { right: 10px; bottom: 10px; font-size: 10px; min-width: 104px; }
   }
 </style>
 </head>
 <body>
-<main aria-label="Animated self-solving Rubix cube stream element">
-  <div id="scene" aria-hidden="true"></div>
+<main aria-label="Animated Three.js self-solving Rubix cube stream element">
+  <canvas id="rubixCanvas" aria-hidden="true"></canvas>
 </main>
-<div id="status" aria-live="polite"><span class="dot"></span><span id="statusText">Scrambling</span></div>
+<div id="status" aria-live="polite"><span class="dot"></span><span id="statusText">Loading</span></div>
 
-<script>
-(() => {
-  "use strict";
+<script type="module">
+import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.166.1/build/three.module.js";
 
-  const params = new URLSearchParams(location.search);
-  const CUBE_SIZE = Number(params.get("size")) || parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--cubie"));
-  const GAP = Number(params.get("gap")) || parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--gap"));
-  const SPACING = CUBE_SIZE + GAP;
-  const HALF = CUBE_SIZE / 2;
-  const requestedScale = Number(params.get("scale"));
-  const autoScale = Math.min(1.15, Math.max(0.46, Math.min(innerWidth || 320, innerHeight || 320) / 300));
-  const FIT_SCALE = Number.isFinite(requestedScale) && requestedScale > 0 ? requestedScale : autoScale;
-  const SCRAMBLE_MOVES = Number(params.get("moves")) || 24;
-  const SCRAMBLE_MS = Number(params.get("scrambleMs")) || 210;
-  const SOLVE_MS = Number(params.get("solveMs")) || 60000;
+const params = new URLSearchParams(location.search);
+const SOLVE_MS = Number(params.get("solveMs")) || 60000;
+const SCRAMBLE_MS = Number(params.get("scrambleMs")) || 220;
+const SCRAMBLE_MOVES = Number(params.get("moves")) || 24;
+const scaleParam = Number(params.get("scale"));
+const CUBE_SCALE = Number.isFinite(scaleParam) && scaleParam > 0 ? scaleParam : 0.82;
+const CUBIE_SIZE = Number(params.get("size")) || 1;
+const GAP = Number(params.get("gap")) || 0.08;
+const SPACING = CUBIE_SIZE + GAP;
+const HALF = CUBIE_SIZE / 2;
 
-  const scene = document.getElementById("scene");
-  const status = document.getElementById("status");
-  const statusText = document.getElementById("statusText");
+const canvas = document.getElementById("rubixCanvas");
+const status = document.getElementById("status");
+const statusText = document.getElementById("statusText");
 
-  const easeInOutQuad = (t) => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
-  const identity = () => [1,0,0, 0,1,0, 0,0,1];
-  const rotX = (a) => { const c = Math.cos(a), s = Math.sin(a); return [1,0,0, 0,c,s, 0,-s,c]; };
-  const rotY = (a) => { const c = Math.cos(a), s = Math.sin(a); return [c,0,-s, 0,1,0, s,0,c]; };
-  const rotZ = (a) => { const c = Math.cos(a), s = Math.sin(a); return [c,s,0, -s,c,0, 0,0,1]; };
-  const rotAxis = (axis, angle) => axis === 0 ? rotX(angle) : axis === 1 ? rotY(angle) : rotZ(angle);
+const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, premultipliedAlpha: false });
+renderer.setClearColor(0x000000, 0);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-  function mulMV(m, v) {
-    return [
-      m[0] * v[0] + m[3] * v[1] + m[6] * v[2],
-      m[1] * v[0] + m[4] * v[1] + m[7] * v[2],
-      m[2] * v[0] + m[5] * v[1] + m[8] * v[2],
-    ];
-  }
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100);
+camera.position.set(5.0, 3.8, 10.5);
+camera.lookAt(0, 0, 0);
 
-  function mulMM(a, b) {
-    const out = new Array(9);
-    for (let col = 0; col < 3; col++) {
-      const r = mulMV(a, [b[col * 3], b[col * 3 + 1], b[col * 3 + 2]]);
-      out[col * 3] = r[0];
-      out[col * 3 + 1] = r[1];
-      out[col * 3 + 2] = r[2];
-    }
-    return out;
-  }
+scene.add(new THREE.HemisphereLight(0xffffff, 0x1f2430, 2.4));
+const key = new THREE.DirectionalLight(0xffffff, 2.1);
+key.position.set(4, 5, 7);
+key.castShadow = true;
+scene.add(key);
+const rim = new THREE.DirectionalLight(0x8be9fd, 0.85);
+rim.position.set(-5, 2, -4);
+scene.add(rim);
 
-  function matrix3d(m, tx, ty, tz) {
-    return `matrix3d(${m[0]},${m[1]},${m[2]},0, ${m[3]},${m[4]},${m[5]},0, ${m[6]},${m[7]},${m[8]},0, ${tx},${ty},${tz},1)`;
-  }
+const cubeRoot = new THREE.Group();
+cubeRoot.scale.setScalar(CUBE_SCALE);
+scene.add(cubeRoot);
 
-  const MOVES = {
-    U: {axis: 1, layer: -1, angle: Math.PI / 2}, "U'": {axis: 1, layer: -1, angle: -Math.PI / 2},
-    D: {axis: 1, layer:  1, angle: -Math.PI / 2}, "D'": {axis: 1, layer:  1, angle:  Math.PI / 2},
-    L: {axis: 0, layer: -1, angle: Math.PI / 2}, "L'": {axis: 0, layer: -1, angle: -Math.PI / 2},
-    R: {axis: 0, layer:  1, angle: -Math.PI / 2}, "R'": {axis: 0, layer:  1, angle:  Math.PI / 2},
-    F: {axis: 2, layer:  1, angle: Math.PI / 2}, "F'": {axis: 2, layer:  1, angle: -Math.PI / 2},
-    B: {axis: 2, layer: -1, angle: -Math.PI / 2}, "B'": {axis: 2, layer: -1, angle:  Math.PI / 2},
-  };
+const palette = {
+  right: 0xe64b3d,
+  left: 0xff9f43,
+  up: 0xf8f8f2,
+  down: 0xf4d03f,
+  front: 0x2ecc71,
+  back: 0x3b82f6,
+  plastic: 0x11141c,
+};
 
-  const inverseMove = (name) => name.endsWith("'") ? name.slice(0, -1) : `${name}'`;
+const plasticMaterial = new THREE.MeshStandardMaterial({
+  color: palette.plastic,
+  roughness: 0.62,
+  metalness: 0.02,
+});
 
-  function generateScramble(count) {
-    const names = Object.keys(MOVES);
-    const sequence = [];
-    let lastAxis = -1;
-    for (let i = 0; i < count; i++) {
-      let name = names[(Math.random() * names.length) | 0];
-      while (MOVES[name].axis === lastAxis) name = names[(Math.random() * names.length) | 0];
-      sequence.push(name);
-      lastAxis = MOVES[name].axis;
-    }
-    return sequence;
-  }
+const stickerMaterials = Object.fromEntries(Object.entries(palette).map(([name, color]) => [
+  name,
+  new THREE.MeshStandardMaterial({ color, roughness: 0.42, metalness: 0.03, side: THREE.DoubleSide }),
+]));
 
-  const stickerFaces = [
-    {dir: [ 1, 0, 0], color: "#e64b3d"},
-    {dir: [-1, 0, 0], color: "#ff9f43"},
-    {dir: [0,  1, 0], color: "#f4d03f"},
-    {dir: [0, -1, 0], color: "#f8f8f2"},
-    {dir: [0, 0,  1], color: "#2ecc71"},
-    {dir: [0, 0, -1], color: "#3b82f6"},
-  ];
-  const faceTransform = [
-    `rotateY(90deg) translateZ(${HALF}px)`,
-    `rotateY(-90deg) translateZ(${HALF}px)`,
-    `rotateX(-90deg) translateZ(${HALF}px)`,
-    `rotateX(90deg) translateZ(${HALF}px)`,
-    `translateZ(${HALF}px)`,
-    `rotateY(180deg) translateZ(${HALF}px)`,
-  ];
-  const interior = "#16181f";
-  const cubies = [];
+const cubieGeometry = new THREE.BoxGeometry(CUBIE_SIZE * 0.98, CUBIE_SIZE * 0.98, CUBIE_SIZE * 0.98);
+const stickerGeometry = new THREE.PlaneGeometry(CUBIE_SIZE * 0.72, CUBIE_SIZE * 0.72);
+const cubies = [];
 
-  for (let x = -1; x <= 1; x++) {
-    for (let y = -1; y <= 1; y++) {
-      for (let z = -1; z <= 1; z++) {
-        if (x === 0 && y === 0 && z === 0) continue;
-        const el = document.createElement("div");
-        el.className = "cubie";
-        el.style.width = `${CUBE_SIZE}px`;
-        el.style.height = `${CUBE_SIZE}px`;
-        el.style.marginLeft = `${-HALF}px`;
-        el.style.marginTop = `${-HALF}px`;
+function makeSticker(material, position, rotation) {
+  const sticker = new THREE.Mesh(stickerGeometry, material);
+  sticker.position.set(position[0], position[1], position[2]);
+  sticker.rotation.set(rotation[0], rotation[1], rotation[2]);
+  sticker.receiveShadow = true;
+  return sticker;
+}
 
-        for (let i = 0; i < stickerFaces.length; i++) {
-          const {dir, color} = stickerFaces[i];
-          const face = document.createElement("div");
-          face.className = "face";
-          face.style.width = `${CUBE_SIZE}px`;
-          face.style.height = `${CUBE_SIZE}px`;
-          // Color every cubie face so the element reads as true 3D cubes from a stream-sized view.
-          face.style.background = color;
-          face.style.transform = faceTransform[i];
-          el.appendChild(face);
-        }
+function makeCubie(x, y, z) {
+  const group = new THREE.Group();
+  group.position.set(x * SPACING, y * SPACING, z * SPACING);
 
-        scene.appendChild(el);
-        cubies.push({pos: [x, y, z], ori: identity(), el, anim: null, before: null});
-      }
+  const body = new THREE.Mesh(cubieGeometry, plasticMaterial);
+  body.castShadow = true;
+  body.receiveShadow = true;
+  group.add(body);
+
+  // Real 3D stickers: colored planes sit on the outside faces of each cubie.
+  if (x ===  1) group.add(makeSticker(stickerMaterials.right, [ HALF + 0.006, 0, 0], [0, Math.PI / 2, 0]));
+  if (x === -1) group.add(makeSticker(stickerMaterials.left,  [-HALF - 0.006, 0, 0], [0, -Math.PI / 2, 0]));
+  if (y ===  1) group.add(makeSticker(stickerMaterials.up,    [0,  HALF + 0.006, 0], [-Math.PI / 2, 0, 0]));
+  if (y === -1) group.add(makeSticker(stickerMaterials.down,  [0, -HALF - 0.006, 0], [ Math.PI / 2, 0, 0]));
+  if (z ===  1) group.add(makeSticker(stickerMaterials.front, [0, 0,  HALF + 0.006], [0, 0, 0]));
+  if (z === -1) group.add(makeSticker(stickerMaterials.back,  [0, 0, -HALF - 0.006], [0, Math.PI, 0]));
+
+  cubeRoot.add(group);
+  cubies.push({ group, coord: [x, y, z] });
+}
+
+for (let x = -1; x <= 1; x++) {
+  for (let y = -1; y <= 1; y++) {
+    for (let z = -1; z <= 1; z++) {
+      if (x !== 0 || y !== 0 || z !== 0) makeCubie(x, y, z);
     }
   }
+}
 
-  function render() {
-    for (const c of cubies) {
-      const p = c.anim ? c.anim.pos : c.pos;
-      const o = c.anim ? c.anim.ori : c.ori;
-      c.el.style.transform = matrix3d(o, p[0] * SPACING, p[1] * SPACING, p[2] * SPACING);
-    }
+const MOVES = {
+  U: {axis: "y", index: 1, layer:  1, angle:  Math.PI / 2}, "U'": {axis: "y", index: 1, layer:  1, angle: -Math.PI / 2},
+  D: {axis: "y", index: 1, layer: -1, angle: -Math.PI / 2}, "D'": {axis: "y", index: 1, layer: -1, angle:  Math.PI / 2},
+  R: {axis: "x", index: 0, layer:  1, angle: -Math.PI / 2}, "R'": {axis: "x", index: 0, layer:  1, angle:  Math.PI / 2},
+  L: {axis: "x", index: 0, layer: -1, angle:  Math.PI / 2}, "L'": {axis: "x", index: 0, layer: -1, angle: -Math.PI / 2},
+  F: {axis: "z", index: 2, layer:  1, angle: -Math.PI / 2}, "F'": {axis: "z", index: 2, layer:  1, angle:  Math.PI / 2},
+  B: {axis: "z", index: 2, layer: -1, angle:  Math.PI / 2}, "B'": {axis: "z", index: 2, layer: -1, angle: -Math.PI / 2},
+};
+
+const inverseMove = (name) => name.endsWith("'") ? name.slice(0, -1) : `${name}'`;
+const easeInOutQuad = (t) => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+
+function generateScramble(count) {
+  const names = Object.keys(MOVES);
+  const sequence = [];
+  let lastAxis = null;
+  for (let i = 0; i < count; i++) {
+    let name = names[(Math.random() * names.length) | 0];
+    while (MOVES[name].axis === lastAxis) name = names[(Math.random() * names.length) | 0];
+    sequence.push(name);
+    lastAxis = MOVES[name].axis;
   }
+  return sequence;
+}
 
-  function commitMove(name) {
-    const move = MOVES[name];
-    const mat = rotAxis(move.axis, move.angle);
-    for (const c of cubies) {
-      if (Math.round(c.pos[move.axis]) !== move.layer) continue;
-      c.pos = mulMV(mat, c.pos).map(Math.round);
-      c.ori = mulMM(mat, c.ori).map(Math.round);
-    }
+function rotateCoord(coord, move) {
+  let [x, y, z] = coord;
+  const clockwise = Math.round(move.angle / (Math.PI / 2));
+  const turns = ((clockwise % 4) + 4) % 4;
+  for (let i = 0; i < turns; i++) {
+    if (move.axis === "x") [y, z] = [-z, y];
+    if (move.axis === "y") [x, z] = [ z, -x];
+    if (move.axis === "z") [x, y] = [-y, x];
   }
+  return [x, y, z];
+}
 
-  let phase = "scramble";
-  let queue = generateScramble(SCRAMBLE_MOVES);
-  let index = 0;
-  let moveStart = null;
-  let phaseStart = performance.now();
-  let movingCubies = [];
+function snapCubie(cubie) {
+  cubie.group.position.set(
+    cubie.coord[0] * SPACING,
+    cubie.coord[1] * SPACING,
+    cubie.coord[2] * SPACING,
+  );
+  cubie.group.position.x = Number(cubie.group.position.x.toFixed(5));
+  cubie.group.position.y = Number(cubie.group.position.y.toFixed(5));
+  cubie.group.position.z = Number(cubie.group.position.z.toFixed(5));
+}
 
-  function beginMove(now) {
-    moveStart = now;
-    const move = MOVES[queue[index]];
-    movingCubies = cubies.filter((c) => Math.round(c.pos[move.axis]) === move.layer);
-    for (const c of movingCubies) c.before = {pos: c.pos, ori: c.ori};
+let phase = "scramble";
+let queue = generateScramble(SCRAMBLE_MOVES);
+let index = 0;
+let phaseStart = performance.now();
+let moveStart = null;
+let pivot = null;
+let moving = [];
+
+function beginMove(now) {
+  const move = MOVES[queue[index]];
+  moving = cubies.filter((c) => c.coord[move.index] === move.layer);
+  pivot = new THREE.Group();
+  cubeRoot.add(pivot);
+  for (const cubie of moving) pivot.attach(cubie.group);
+  moveStart = now;
+}
+
+function finishMove(name) {
+  const move = MOVES[name];
+  for (const cubie of moving) {
+    cubeRoot.attach(cubie.group);
+    cubie.coord = rotateCoord(cubie.coord, move);
+    snapCubie(cubie);
   }
+  cubeRoot.remove(pivot);
+  pivot = null;
+  moving = [];
+}
 
-  function switchPhase(now) {
-    if (phase === "scramble") {
-      phase = "solve";
-      queue = queue.slice().reverse().map(inverseMove);
-    } else {
-      phase = "scramble";
-      queue = generateScramble(SCRAMBLE_MOVES);
-    }
-    index = 0;
+function switchPhase(now) {
+  if (phase === "scramble") {
+    phase = "solve";
+    queue = queue.slice().reverse().map(inverseMove);
+  } else {
+    phase = "scramble";
+    queue = generateScramble(SCRAMBLE_MOVES);
+  }
+  index = 0;
+  phaseStart = now;
+  moveStart = null;
+}
+
+function updateStatus(now) {
+  status.classList.toggle("scrambling", phase === "scramble");
+  if (phase === "solve") {
+    const remaining = Math.max(0, SOLVE_MS - (now - phaseStart));
+    const seconds = Math.ceil(remaining / 1000);
+    statusText.textContent = `Solving ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+  } else {
+    statusText.textContent = "Scrambling";
+  }
+}
+
+function resize() {
+  const width = Math.max(1, window.innerWidth);
+  const height = Math.max(1, window.innerHeight);
+  renderer.setSize(width, height, false);
+  camera.aspect = width / height;
+  const smallest = Math.min(width, height);
+  const fit = Math.max(8.2, 11.2 - Math.min(1.6, smallest / 360));
+  camera.position.set(5.0, 3.8, fit);
+  camera.updateProjectionMatrix();
+}
+
+window.addEventListener("resize", resize);
+resize();
+
+function animate(now) {
+  if (moveStart === null) beginMove(now);
+
+  const name = queue[index];
+  const move = MOVES[name];
+  const duration = phase === "solve" ? SOLVE_MS / queue.length : SCRAMBLE_MS;
+  const t = Math.min(1, (now - moveStart) / duration);
+  const eased = easeInOutQuad(t);
+
+  if (pivot) pivot.rotation[move.axis] = move.angle * eased;
+
+  // Gentle display motion, but never enough to flatten the cube for OBS.
+  cubeRoot.rotation.x = -0.55 + Math.sin(now / 9000) * 0.06;
+  cubeRoot.rotation.y = -0.72 + Math.sin(now / 12000) * 0.10;
+  cubeRoot.rotation.z =  0.10 + Math.sin(now / 14000) * 0.03;
+
+  updateStatus(now);
+  renderer.render(scene, camera);
+
+  if (t >= 1) {
+    finishMove(name);
+    index += 1;
     moveStart = null;
-    phaseStart = now;
+    if (index >= queue.length) switchPhase(now);
   }
 
-  function updateStatus(now) {
-    status.classList.toggle("scrambling", phase === "scramble");
-    if (phase === "solve") {
-      const remaining = Math.max(0, SOLVE_MS - (now - phaseStart));
-      const seconds = Math.ceil(remaining / 1000);
-      statusText.textContent = `Solving ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
-    } else {
-      statusText.textContent = "Scrambling";
-    }
-  }
+  requestAnimationFrame(animate);
+}
 
-  function tick(now) {
-    if (moveStart === null) beginMove(now);
+window.addEventListener("keydown", (event) => {
+  if (event.code === "Space" && moveStart !== null) moveStart -= 100000;
+});
 
-    const name = queue[index];
-    const move = MOVES[name];
-    const duration = phase === "solve" ? SOLVE_MS / queue.length : SCRAMBLE_MS;
-    const t = Math.min(1, (now - moveStart) / duration);
-    const partial = rotAxis(move.axis, move.angle * easeInOutQuad(t));
-
-    for (const c of movingCubies) {
-      c.anim = {
-        pos: mulMV(partial, c.before.pos),
-        ori: mulMM(partial, c.before.ori),
-      };
-    }
-
-    render();
-
-    if (t >= 1) {
-      commitMove(name);
-      for (const c of movingCubies) c.anim = null;
-      index += 1;
-      moveStart = null;
-      if (index >= queue.length) switchPhase(now);
-    }
-
-    // Keep the cube at an isometric camera angle so OBS never catches it flat/front-on.
-    const cameraX = 32 + Math.sin(now / 9000) * 4;
-    const cameraY = -42 + Math.sin(now / 11000) * 7;
-    const cameraZ = 4 + Math.sin(now / 13000) * 2;
-    scene.style.transform = `scale(${FIT_SCALE}) rotateX(${cameraX}deg) rotateY(${cameraY}deg) rotateZ(${cameraZ}deg)`;
-    updateStatus(now);
-    requestAnimationFrame(tick);
-  }
-
-  window.addEventListener("keydown", (event) => {
-    if (event.code === "Space" && moveStart !== null) moveStart -= 100000;
-  });
-
-  render();
-  requestAnimationFrame(tick);
-})();
+requestAnimationFrame(animate);
 </script>
 </body>
 </html>
