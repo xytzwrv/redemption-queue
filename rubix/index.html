@@ -76,6 +76,9 @@ const params = new URLSearchParams(location.search);
 const SOLVE_MS = Number(params.get("solveMs")) || 60000;
 const SCRAMBLE_MS = Number(params.get("scrambleMs")) || 220;
 const SCRAMBLE_MOVES = Number(params.get("moves")) || 24;
+const MIC_MODE = /^(1|true|yes|on)$/i.test(params.get("mic") || params.get("microphone") || "");
+const MIC_SILENT_MOVE_MS = Number(params.get("micSilentMs")) || 9500;
+const MIC_LOUD_MOVE_MS = Number(params.get("micLoudMs")) || 180;
 const scaleParam = Number(params.get("scale"));
 const CUBE_SCALE = Number.isFinite(scaleParam) && scaleParam > 0 ? scaleParam : 0.82;
 const CUBIE_SIZE = Number(params.get("size")) || 1;
@@ -86,6 +89,60 @@ const HALF = CUBIE_SIZE / 2;
 const canvas = document.getElementById("rubixCanvas");
 const status = document.getElementById("status");
 const statusText = document.getElementById("statusText");
+
+const mic = {
+  state: MIC_MODE ? "starting" : "off",
+  analyser: null,
+  data: null,
+  level: 0,
+};
+
+async function initMic() {
+  if (!MIC_MODE) return;
+  if (!navigator.mediaDevices?.getUserMedia) {
+    mic.state = "unavailable";
+    return;
+  }
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
+      },
+      video: false,
+    });
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    const context = new AudioContext();
+    if (context.state === "suspended") await context.resume();
+    const source = context.createMediaStreamSource(stream);
+    const analyser = context.createAnalyser();
+    analyser.fftSize = 1024;
+    analyser.smoothingTimeConstant = 0.72;
+    source.connect(analyser);
+    mic.analyser = analyser;
+    mic.data = new Uint8Array(analyser.fftSize);
+    mic.state = "listening";
+  } catch (error) {
+    mic.state = "blocked";
+    console.warn("Rubix microphone mode could not start:", error);
+  }
+}
+
+function readMicLevel() {
+  if (!mic.analyser || !mic.data) return mic.level;
+  mic.analyser.getByteTimeDomainData(mic.data);
+  let sum = 0;
+  for (const value of mic.data) {
+    const centered = (value - 128) / 128;
+    sum += centered * centered;
+  }
+  const rms = Math.sqrt(sum / mic.data.length);
+  const normalized = THREE.MathUtils.clamp((rms - 0.012) / 0.17, 0, 1);
+  mic.level = mic.level * 0.82 + normalized * 0.18;
+  return mic.level;
+}
 
 const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, premultipliedAlpha: false });
 renderer.setClearColor(0x000000, 0);
@@ -227,6 +284,8 @@ let queue = generateScramble(SCRAMBLE_MOVES);
 let index = 0;
 let phaseStart = performance.now();
 let moveStart = null;
+let moveProgress = 0;
+let lastFrameTime = performance.now();
 let pivot = null;
 let moving = [];
 
@@ -237,6 +296,7 @@ function beginMove(now) {
   cubeRoot.add(pivot);
   for (const cubie of moving) pivot.attach(cubie.group);
   moveStart = now;
+  moveProgress = 0;
 }
 
 function finishMove(name) {
@@ -262,17 +322,33 @@ function switchPhase(now) {
   index = 0;
   phaseStart = now;
   moveStart = null;
+  moveProgress = 0;
 }
 
 function updateStatus(now) {
   status.classList.toggle("scrambling", phase === "scramble");
   if (phase === "solve") {
-    const remaining = Math.max(0, SOLVE_MS - (now - phaseStart));
-    const seconds = Math.ceil(remaining / 1000);
-    statusText.textContent = `Solving ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+    if (MIC_MODE) {
+      if (mic.state === "listening") {
+        statusText.textContent = `Mic solve ${Math.round(mic.level * 100)}%`;
+      } else {
+        statusText.textContent = `Mic ${mic.state}`;
+      }
+    } else {
+      const remaining = Math.max(0, SOLVE_MS - (now - phaseStart));
+      const seconds = Math.ceil(remaining / 1000);
+      statusText.textContent = `Solving ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+    }
   } else {
-    statusText.textContent = "Scrambling";
+    statusText.textContent = MIC_MODE ? `Scrambling • mic` : "Scrambling";
   }
+}
+
+function currentMoveDuration() {
+  if (phase !== "solve" || !MIC_MODE) return phase === "solve" ? SOLVE_MS / queue.length : SCRAMBLE_MS;
+  const level = mic.state === "listening" ? readMicLevel() : 0;
+  const response = Math.pow(level, 0.62);
+  return MIC_SILENT_MOVE_MS - (MIC_SILENT_MOVE_MS - MIC_LOUD_MOVE_MS) * response;
 }
 
 function resize() {
@@ -290,12 +366,15 @@ window.addEventListener("resize", resize);
 resize();
 
 function animate(now) {
+  const deltaMs = Math.min(100, Math.max(0, now - lastFrameTime));
+  lastFrameTime = now;
   if (moveStart === null) beginMove(now);
 
   const name = queue[index];
   const move = MOVES[name];
-  const duration = phase === "solve" ? SOLVE_MS / queue.length : SCRAMBLE_MS;
-  const t = Math.min(1, (now - moveStart) / duration);
+  const duration = currentMoveDuration();
+  moveProgress = Math.min(1, moveProgress + deltaMs / duration);
+  const t = moveProgress;
   const eased = easeInOutQuad(t);
 
   if (pivot) pivot.rotation[move.axis] = move.angle * eased;
@@ -319,9 +398,10 @@ function animate(now) {
 }
 
 window.addEventListener("keydown", (event) => {
-  if (event.code === "Space" && moveStart !== null) moveStart -= 100000;
+  if (event.code === "Space" && moveStart !== null) moveProgress = 1;
 });
 
+initMic();
 requestAnimationFrame(animate);
 </script>
 </body>
