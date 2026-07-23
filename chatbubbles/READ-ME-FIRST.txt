@@ -13,6 +13,10 @@ WHAT THIS IS
   No Twitch login needed - it reads chat anonymously (read-only), same
   as the map/POI selector and dice. Just type your channel name once.
 
+  Emotes render inline as images, and Cheers (bit donations) get a
+  colored glow around the bubble plus a small bits-count badge - see
+  EMOTES & BITS below.
+
 WHAT'S IN THIS FOLDER
   chatbubbles.html   - the overlay (the only important file)
   READ-ME-FIRST.txt  - this file
@@ -30,6 +34,20 @@ OBS SETUP
      remembered in this browser source after that.) Or skip the box
      entirely by adding ?channel=yourname to the URL.
   4. That's it. Chat something to test it, or use ?demo=1 (below).
+
+EMOTES & BITS
+  - Twitch and channel-specific emotes render as inline images, pulled
+    straight from Twitch's public emote CDN - no API key needed, still
+    fully anonymous. Third-party emotes (BTTV/FFZ/7TV) aren't supported,
+    since those aren't in the anonymous IRC tag data.
+  - A Cheer (bit donation in chat) gets a colored glow around the whole
+    bubble plus a small bits badge (e.g. "diamond 500"), colored by a
+    rough tier: gray under 100, purple 100+, green 1000+, blue 5000+,
+    red 10000+. This is a homage to Twitch's real Cheermote tier colors,
+    not the official animated Cheermote graphics - those require an
+    authenticated API call, which would mean asking viewers/the
+    broadcaster to log in just to see them, breaking the no-login
+    design of this overlay.
 
 TIPS
   - Press H (after clicking the source once via Interact, so it has

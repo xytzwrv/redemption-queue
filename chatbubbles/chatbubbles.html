@@ -48,6 +48,12 @@
     word-break: break-word;
   }
   .bubble-inner .user { font-weight: 700; }
+  .bubble-inner .emote {
+    height: calc(20px * var(--bscale)); width: auto; vertical-align: middle;
+    margin: -3px 1px; display: inline-block;
+  }
+  .bubble-inner .bits { font-weight: 700; margin: 0 4px; white-space: nowrap; }
+  .bubble-inner.cheer { box-shadow: 0 6px 16px rgba(0,0,0,.35), 0 0 0 2px var(--cheer-color, #9c3ee8); }
   .bubble-inner.pop { animation: bubblePop .16s cubic-bezier(.2,.9,.3,1.2) both; }
   @keyframes bubblePop { from { opacity: 0; transform: scale(.7); } to { opacity: 1; transform: scale(1); } }
 
@@ -247,22 +253,68 @@
     settingsEl.style.display = settingsEl.style.display === "none" ? "" : "none";
   });
 
+  /* ============================ emotes ============================
+     Twitch's IRC "emotes" tag looks like "25:0-4,6-10/1902:12-14" - emote
+     id, then one or more start-end index ranges (inclusive) where it
+     appears in the raw message. Those indices are only valid against the
+     UNTRIMMED, UNTRUNCATED message text - see onChat below for how that's
+     preserved. Rendered straight off Twitch's public emote CDN, no API
+     key needed (same "no login" spirit as the rest of this overlay). */
+  function parseEmotes(tag) {
+    if (!tag) return [];
+    const out = [];
+    for (const group of tag.split("/")) {
+      if (!group) continue;
+      const sep = group.indexOf(":");
+      if (sep < 0) continue;
+      const id = group.slice(0, sep);
+      for (const r of group.slice(sep + 1).split(",")) {
+        const [s, e] = r.split("-").map(Number);
+        if (Number.isFinite(s) && Number.isFinite(e)) out.push({ id, start: s, end: e });
+      }
+    }
+    out.sort((a, b) => a.start - b.start);
+    return out;
+  }
+
+  // Twitch's own rough per-tier cheermote colors - just a homage, not fetched
+  // from the real per-channel cheermote config (that needs an app token/
+  // Client-Id, which would break the anonymous/no-login design here).
+  function cheerTierColor(bits) {
+    if (bits >= 10000) return "#ff3838";
+    if (bits >= 5000)  return "#4aa1ff";
+    if (bits >= 1000)  return "#3ec95c";
+    if (bits >= 100)   return "#9c3ee8";
+    return "#979797";
+  }
+
   /* ============================ spawn queue ============================ */
   let spawnQueue = [];
   const lastUserSpawn = new Map();
 
-  function onChat(userId, name, text) {
+  function onChat(userId, name, rawText, emotesTag, bits) {
     if (CONFIG.ignore.includes((name || "").toLowerCase())) return;
     const now = performance.now();
     const last = lastUserSpawn.get(userId) || 0;
     if (now - last < CONFIG.perUserCooldownMs) return;
     lastUserSpawn.set(userId, now);
 
-    let clean = (text || "").trim();
+    const raw = rawText || "";
+    // Emote ranges are indices into the raw message - trimming leading
+    // whitespace would shift them, so bail on emote rendering (not on the
+    // message itself) in that rare case rather than risk misplaced images.
+    const leadTrim = raw.length - raw.trimStart().length;
+    let clean = raw.trim();
     if (!clean) return;
-    if (clean.length > CONFIG.maxMessageChars) clean = clean.slice(0, CONFIG.maxMessageChars) + "…";
 
-    spawnQueue.push({ userId, name: name || "viewer", text: clean });
+    let emotes = leadTrim === 0 ? parseEmotes(emotesTag) : [];
+    if (clean.length > CONFIG.maxMessageChars) {
+      clean = clean.slice(0, CONFIG.maxMessageChars);
+      emotes = emotes.filter((e) => e.end < clean.length);
+      clean += "…";
+    }
+
+    spawnQueue.push({ userId, name: name || "viewer", text: clean, emotes, bits: bits || 0 });
     if (spawnQueue.length > CONFIG.spawnQueueMax) spawnQueue.shift();
   }
 
@@ -272,7 +324,7 @@
     const next = spawnQueue.shift();
     if (!next) return;
     lastSpawnAt = t;
-    spawnBubble(next.userId, next.name, next.text, t);
+    spawnBubble(next.userId, next.name, next.text, next.emotes, next.bits, t);
   }
 
   /* ============================ bubbles ============================ */
@@ -284,7 +336,27 @@
     if (oldest) startDeath(oldest, t, 150);
   }
 
-  function spawnBubble(userId, name, text, t) {
+  function buildMessageContent(msgSpan, text, emotes) {
+    msgSpan.textContent = "";
+    msgSpan.append(": ");
+    if (!emotes || !emotes.length) {
+      msgSpan.append(text);
+      return;
+    }
+    let cursor = 0;
+    for (const e of emotes) {
+      if (e.start > cursor) msgSpan.append(text.slice(cursor, e.start));
+      const img = document.createElement("img");
+      img.className = "emote";
+      img.src = `https://static-cdn.jtvnw.net/emoticons/v2/${e.id}/default/dark/2.0`;
+      img.alt = text.slice(e.start, e.end + 1);
+      msgSpan.appendChild(img);
+      cursor = e.end + 1;
+    }
+    if (cursor < text.length) msgSpan.append(text.slice(cursor));
+  }
+
+  function spawnBubble(userId, name, text, emotes, bits, t) {
     if (bubbles.length >= CONFIG.maxBubbles) evictOldest(t);
 
     const el = document.createElement("div");
@@ -293,6 +365,10 @@
 
     const inner = document.createElement("div");
     inner.className = "bubble-inner";
+    if (bits > 0) {
+      inner.classList.add("cheer");
+      inner.style.setProperty("--cheer-color", cheerTierColor(bits));
+    }
 
     const userSpan = document.createElement("span");
     userSpan.className = "user";
@@ -301,9 +377,16 @@
 
     const msgSpan = document.createElement("span");
     msgSpan.className = "msg";
-    msgSpan.textContent = ": " + text;
+    buildMessageContent(msgSpan, text, emotes);
 
     inner.append(userSpan, msgSpan);
+    if (bits > 0) {
+      const bitsSpan = document.createElement("span");
+      bitsSpan.className = "bits";
+      bitsSpan.textContent = `💎${bits}`;
+      bitsSpan.style.color = cheerTierColor(bits);
+      inner.append(bitsSpan);
+    }
     el.appendChild(inner);
     stageEl.appendChild(el);
 
@@ -497,7 +580,7 @@
         if (!line) continue;
         if (line.startsWith("PING")) { ws.send("PONG :tmi.twitch.tv"); continue; }
         const p = parseLine(line);
-        if (p) onChat(p.userId, p.name, p.msg);
+        if (p) onChat(p.userId, p.name, p.msg, p.emotesTag, p.bits);
       }
     };
     ws.onclose = () => {
@@ -527,7 +610,8 @@
     const msg = rest.slice(ci + 1);
     const userId = tags["user-id"] || ("anon:" + (rest.match(/^:([^!]+)!/) || [])[1]);
     const name = tags["display-name"] || (rest.match(/^:([^!]+)!/) || [])[1] || "viewer";
-    return { userId, name, msg };
+    const bits = tags["bits"] ? parseInt(tags["bits"], 10) || 0 : 0;
+    return { userId, name, msg, emotesTag: tags["emotes"], bits };
   }
 
   connectBtn.addEventListener("click", () => {
