@@ -10,9 +10,6 @@ https://xytzwrv.github.io/redemption-queue/rubix/?mic=obs&obsInput=Mic%2FAux
 Audio-reactive URL with visible sensitivity slider:
 https://xytzwrv.github.io/redemption-queue/rubix/?mic=obs&obsInput=Mic%2FAux&controls=1
 
-Direct browser microphone URL (works in normal browsers, often blocked in OBS Browser Source):
-https://xytzwrv.github.io/redemption-queue/rubix/?mic=1
-
 What it does:
 - Transparent background for stream overlays
 - Real Three.js/WebGL 3D cubies with colored sticker faces
@@ -20,8 +17,10 @@ What it does:
 - Scrambles itself quickly
 - Slowly solves itself over 60 seconds in normal mode
 - With ?mic=obs, reads OBS WebSocket audio meter levels instead of requesting browser mic permission
-- With ?controls=1, shows a sensitivity slider; higher sensitivity makes quieter audio solve faster
-- With ?mic=1, uses browser getUserMedia microphone permission where supported
+- With ?controls=1, shows a sensitivity slider; click the cube to hide/show controls in OBS
+- With dB calibration, dbMin maps to 0% and dbMax maps to 100%
+- At 100%, solve speed defaults to 10x normal speed; at 0%, it defaults to 0.1x
+- With image URL flags, still images are split into 3x3 face stickers and solve back together
 - Randomizes again and loops forever
 
 OBS WebSocket setup for ?mic=obs:
@@ -32,17 +31,42 @@ OBS WebSocket setup for ?mic=obs:
    https://xytzwrv.github.io/redemption-queue/rubix/?mic=obs&obsInput=Mic%2FAux&controls=1
 5. If your mic source has a different name, URL-encode it in obsInput.
 
+Audio calibration examples:
+- dbMin=-55 means -55 dB and lower is 0%.
+- dbMax=-18 means -18 dB and higher is 100%.
+- maxSpeed=10 means 100% audio solves 10x faster than normal.
+
+Example calibrated OBS URL:
+https://xytzwrv.github.io/redemption-queue/rubix/?mic=obs&obsInput=Mic%2FAux&controls=1&dbMin=-55&dbMax=-18&maxSpeed=10
+
+Image face examples:
+- Same image on all six faces:
+  https://xytzwrv.github.io/redemption-queue/rubix/?img=IMAGE_URL
+- Different images per face:
+  ?frontImg=URL&backImg=URL&leftImg=URL&rightImg=URL&upImg=URL&downImg=URL
+
+Image URLs should be URL-encoded and served over HTTPS with CORS allowed. PNG, JPG, JPEG, WebP, and GIF still frames work as browser image textures.
+
 Optional URL params:
 - mic=obs        OBS-safe mode using OBS WebSocket audio meters
-- controls=1     show the sensitivity slider
+- controls=1     show the sensitivity slider; click the cube to hide/show it
 - sensitivity=1.5 set initial sensitivity without showing slider; range 0.1 to 4
+- dbMin=-60      dB level that maps to 0% audio response
+- dbMax=-12      dB level that maps to 100% audio response
+- minSpeed=0.1   solve speed multiplier at 0% audio
+- maxSpeed=10    solve speed multiplier at 100% audio
 - obsInput=Mic%2FAux exact OBS input name to listen to; blank uses loudest input
 - obsHost=127.0.0.1 OBS WebSocket host
 - obsPort=4455   OBS WebSocket port
 - obsPassword=... OBS WebSocket password, if auth is enabled
-- mic=1          direct browser microphone mode
-- micSilentMs=9500 milliseconds per solve move while silent
-- micLoudMs=180    milliseconds per solve move while loud
+- mic=1          direct browser microphone mode; often blocked by OBS Browser Source
+- img=URL        one still image split across every cube face
+- frontImg=URL   still image for front face
+- backImg=URL    still image for back face
+- leftImg=URL    still image for left face
+- rightImg=URL   still image for right face
+- upImg=URL      still image for top face
+- downImg=URL    still image for bottom face
 - size=1         cubie size in Three.js world units
 - scale=0.82     overall scale override for tiny OBS sources
 - gap=0.08       spacing between cubies
