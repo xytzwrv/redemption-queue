@@ -4,6 +4,9 @@ Rubix Cube Stream Element
 OBS Browser Source URL:
 https://xytzwrv.github.io/redemption-queue/rubix/
 
+Microphone-reactive URL:
+https://xytzwrv.github.io/redemption-queue/rubix/?mic=1
+
 Direct file URL:
 https://xytzwrv.github.io/redemption-queue/rubix/rubix.html
 
@@ -12,16 +15,20 @@ What it does:
 - Real Three.js/WebGL 3D cubies with colored sticker faces
 - Face turns are animated as actual 3D rotations
 - Scrambles itself quickly
-- Slowly solves itself over 60 seconds
+- Slowly solves itself over 60 seconds in normal mode
+- With ?mic=1, silence solves very slowly and louder mic input solves faster
 - Randomizes again and loops forever
 
 Optional URL params:
+- mic=1          enable microphone-reactive solve speed
+- micSilentMs=9500 milliseconds per solve move while silent
+- micLoudMs=180    milliseconds per solve move while loud
 - size=1         cubie size in Three.js world units
 - scale=0.82     overall scale override for tiny OBS sources
 - gap=0.08       spacing between cubies
-- solveMs=60000  solve duration in milliseconds
+- solveMs=60000  normal-mode solve duration in milliseconds
 - moves=30       number of scramble moves
 - scrambleMs=220 speed per scramble move
 
 Example:
-https://xytzwrv.github.io/redemption-queue/rubix/?scale=0.75&solveMs=60000&moves=30
+https://xytzwrv.github.io/redemption-queue/rubix/?mic=1&scale=0.75&micSilentMs=10000&micLoudMs=160
