@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>3x3</title>
+<style>
+  /* ---------- Dracula palette (same values chatbubbles.html / pinned-message.html use) ---------- */
+  :root {
+    --bg:      #282a36;
+    --line:    #44475a;
+    --fg:      #f8f8f2;
+    --comment: #6272a4;
+    --green:   #50fa7b;
+    --purple:  #bd93f9;
+    --pink:    #ff79c6;
+    --cyan:    #8be9fd;
+    --yellow:  #f1fa8c;
+    --orange:  #ffb86c;
+    --red:     #ff5555;
+
+    --card:    rgba(40, 42, 54, 0.92);
+    --radius:  14px;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: transparent;   /* OBS overlay: keep transparent */
+    overflow: hidden;
+    font-family: "Segoe UI", "Inter", system-ui, sans-serif;
+  }
+
+  /* ---------- the 3x3 card ---------- */
+  #grid3 {
+    position: fixed; top: 28px; left: 50%;
+    width: min(92vw, 460px);
+    transform: translate(-50%, -140%);
+    opacity: 0;
+    transition: transform .38s cubic-bezier(.2,.9,.3,1.2), opacity .3s ease;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: 0 14px 40px rgba(0,0,0,.5);
+    padding: 14px;
+    color: var(--fg);
+    backdrop-filter: blur(10px);
+  }
+  #grid3.show { transform: translate(-50%, 0); opacity: 1; }
+
+  #grid3 .head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  #grid3 .head .u { font-weight: 800; font-size: 14px; }
+  #grid3 .head .via { font-size: 11px; color: var(--comment); margin-left: auto; }
+
+  .tiles {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px;
+    border-radius: 8px; overflow: hidden;
+  }
+  .tiles .tile {
+    position: relative; aspect-ratio: 1 / 1; background: var(--line);
+    background-size: cover; background-position: center;
+  }
+  .tiles .tile .cap {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    padding: 4px 5px 3px; font-size: 9px; line-height: 1.25;
+    background: linear-gradient(to top, rgba(0,0,0,.75), rgba(0,0,0,0));
+    color: #fff; opacity: 0; transition: opacity .15s;
+  }
+  .tiles .tile .cap b { display: block; font-size: 9.5px; }
+  #grid3.caps .tiles .tile .cap { opacity: 1; }
+
+  /* ---------- lock/unlock status pill (always visible, bottom-right) ---------- */
+  #lockPill {
+    position: fixed; right: 16px; bottom: 16px;
+    display: flex; align-items: center; gap: 6px;
+    font-size: 12px; letter-spacing: .3px;
+    padding: 5px 12px; border-radius: 999px;
+    background: var(--card); border: 1px solid var(--line);
+    color: var(--comment);
+  }
+  #lockPill.unlocked { color: var(--green); border-color: var(--green); }
+  #lockPill.locked   { color: var(--orange); border-color: var(--orange); }
+  #lockPill .icon { font-size: 13px; }
+
+  /* ---------- status pill + connect gate (bottom-left) ---------- */
+  #status {
+    position: fixed; left: 16px; bottom: 16px;
+    font-size: 12px; letter-spacing: .5px;
+    padding: 4px 10px; border-radius: 999px;
+    background: var(--card); border: 1px solid var(--line);
+    color: var(--comment);
+  }
+  #status.live { color: var(--green); border-color: var(--green); }
+  #status.err  { color: var(--red);  border-color: var(--red);  }
+
+  #gate {
+    position: fixed; left: 16px; bottom: 16px; max-width: 360px;
+    color: var(--fg);
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 18px 20px;
+    box-shadow: 0 6px 18px rgba(0,0,0,.45);
+  }
+  #gate h2 { margin: 0 0 6px; font-size: 16px; color: var(--purple); }
+  #gate p  { margin: 0 0 14px; font-size: 13px; line-height: 1.5; color: var(--comment); }
+  #gate label { display: block; font-size: 11px; color: var(--comment); margin-bottom: 4px; }
+  #gate input {
+    width: 100%; background: rgba(0,0,0,.25); border: 1px solid var(--line);
+    border-radius: 8px; padding: 8px 10px; margin-bottom: 10px;
+    color: var(--fg); font-size: 14px;
+  }
+  #gate a { color: var(--cyan); }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--purple); color: var(--bg);
+    border: none; border-radius: 8px; padding: 10px 16px;
+    font-size: 14px; font-weight: 700; cursor: pointer;
+    transition: transform .1s, filter .15s;
+  }
+  .btn:hover { filter: brightness(1.08); }
+  .btn:active { transform: scale(.97); }
+</style>
+</head>
+<body>
+  <div id="grid3">
+    <div class="head">
+      <span class="u" id="g3user"></span>
+      <span class="via">via Last.fm</span>
+    </div>
+    <div class="tiles" id="g3tiles"></div>
+  </div>
+
+  <div id="lockPill" style="display:none">
+    <span class="icon" id="lockIcon">🔓</span>
+    <span id="lockText">unlocked</span>
+  </div>
+
+  <div id="status" style="display:none"></div>
+  <div id="gate" style="display:none">
+    <h2>Connect 3x3</h2>
+    <p>Watches chat for Last.fm profile links (<code>last.fm/user/name</code>)
+       and builds a 3x3 of that person's top albums.</p>
+    <label for="channelInput">Twitch channel</label>
+    <input id="channelInput" type="text" placeholder="yourchannel" autocomplete="off" spellcheck="false">
+    <label for="apikeyInput">Last.fm API key</label>
+    <input id="apikeyInput" type="text" placeholder="paste your key" autocomplete="off" spellcheck="false">
+    <p style="margin-top:-4px">Free, one-time: create one at
+       <a href="https://www.last.fm/api/account/create" target="_blank" rel="noopener">last.fm/api/account/create</a>.</p>
+    <button id="connectBtn" class="btn">Connect</button>
+  </div>
+
+  <script>
+  /* ================================================================
+     SETUP
+     ----------------------------------------------------------------
+     No Twitch login needed - reads chat anonymously (read-only,
+     IRC-over-WebSocket with a "justinfan" guest nick), same as
+     chatbubbles.html / pinned-message.html. The Last.fm side needs a
+     free API key (last.fm/api/account/create) since Last.fm's public
+     API requires one per app, not per viewer - it's not a personal
+     login, just a key that lets this page ask Last.fm "what are this
+     username's top albums." Both are entered once in the on-screen
+     gate (or via ?channel=yourname&apikey=yourkey) and remembered in
+     localStorage after that.
+     ================================================================ */
+  const CONFIG = {
+    ignore: ["nightbot","streamelements","streamlabs","moobot","sery_bot","soundalerts","fossabot","wizebot"],
+    period: "overall",       // Last.fm period for "top albums": overall, 7day, 1month, 3month, 6month, 12month
+    gridCount: 9,            // 3x3
+    lockMs: 5 * 60 * 1000,   // how long the grid stays locked in after a successful swap
+    showCaptions: true,      // small album/artist label on each tile
+  };
+
+  const params  = new URLSearchParams(location.search);
+  const DEMO    = params.get("demo") === "1";
+  const CHANNEL_KEY = "3by3:channel";
+  const APIKEY_KEY  = "3by3:apikey";
+
+  const gridEl    = document.getElementById("grid3");
+  const userEl    = document.getElementById("g3user");
+  const tilesEl   = document.getElementById("g3tiles");
+  const lockPill  = document.getElementById("lockPill");
+  const lockIcon  = document.getElementById("lockIcon");
+  const lockText  = document.getElementById("lockText");
+  const statusEl  = document.getElementById("status");
+  const gateEl    = document.getElementById("gate");
+  const channelInput = document.getElementById("channelInput");
+  const apikeyInput  = document.getElementById("apikeyInput");
+  const connectBtn   = document.getElementById("connectBtn");
+
+  if (CONFIG.showCaptions) gridEl.classList.add("caps");
+
+  /* ============================ lock state ============================ */
+  let locked = false;
+  let unlockAt = 0;
+  let tickTimer = null;
+
+  function setLockUI() {
+    lockPill.style.display = "";
+    lockPill.classList.toggle("unlocked", !locked);
+    lockPill.classList.toggle("locked", locked);
+    if (locked) {
+      const remain = Math.max(0, unlockAt - Date.now());
+      const m = Math.floor(remain / 60000), s = Math.floor((remain % 60000) / 1000);
+      lockIcon.textContent = "🔒";
+      lockText.textContent = "locked " + m + ":" + String(s).padStart(2, "0");
+    } else {
+      lockIcon.textContent = "🔓";
+      lockText.textContent = "unlocked";
+    }
+  }
+
+  function lockFor(ms) {
+    locked = true;
+    unlockAt = Date.now() + ms;
+    setLockUI();
+    clearInterval(tickTimer);
+    tickTimer = setInterval(() => {
+      if (Date.now() >= unlockAt) { locked = false; clearInterval(tickTimer); }
+      setLockUI();
+    }, 1000);
+  }
+
+  /* ============================ Last.fm ============================ */
+  let apikey = (params.get("apikey") || localStorage.getItem(APIKEY_KEY) || "").trim();
+
+  async function fetchTopAlbums(username) {
+    const url = "https://ws.audioscrobbler.com/2.0/?method=user.gettopalbums"
+      + "&user=" + encodeURIComponent(username)
+      + "&api_key=" + encodeURIComponent(apikey)
+      + "&period=" + encodeURIComponent(CONFIG.period)
+      + "&limit=" + CONFIG.gridCount
+      + "&format=json";
+    let res, json;
+    try { res = await fetch(url); json = await res.json(); } catch { return null; }
+    if (!json || json.error || !json.topalbums || !Array.isArray(json.topalbums.album)) return null;
+
+    const albums = json.topalbums.album
+      .map((a) => {
+        const imgs = Array.isArray(a.image) ? a.image : [];
+        const best = imgs.slice().reverse().find((im) => im["#text"] && im["#text"].trim());
+        return { name: a.name, artist: (a.artist && a.artist.name) || "", img: best ? best["#text"] : "" };
+      })
+      .filter((a) => a.img); // only albums with real art count toward "enough"
+
+    if (albums.length < CONFIG.gridCount) return null; // privacy-restricted, too few scrobbles, etc.
+    return albums.slice(0, CONFIG.gridCount);
+  }
+
+  function renderGrid(username, albums) {
+    userEl.textContent = username;
+    tilesEl.innerHTML = "";
+    for (const a of albums) {
+      const t = document.createElement("div");
+      t.className = "tile";
+      t.style.backgroundImage = "url('" + a.img.replace(/'/g, "%27") + "')";
+      const cap = document.createElement("div");
+      cap.className = "cap";
+      cap.innerHTML = "<b></b>";
+      cap.querySelector("b").textContent = a.name;
+      cap.append(document.createTextNode(a.artist));
+      t.appendChild(cap);
+      tilesEl.appendChild(t);
+    }
+    gridEl.classList.add("show");
+  }
+
+  async function tryUser(username) {
+    if (locked || !apikey) return;
+    const albums = await fetchTopAlbums(username);
+    if (!albums) return; // private profile, not found, or not enough top albums with art
+    renderGrid(username, albums);
+    lockFor(CONFIG.lockMs);
+  }
+
+  /* ============================ chat -> last.fm link detection ============================ */
+  const LASTFM_RE = /(?:https?:\/\/)?(?:www\.)?last\.fm\/user\/([a-zA-Z0-9_-]{2,25})/i;
+  function onChat(name, text) {
+    if (CONFIG.ignore.includes((name || "").toLowerCase())) return;
+    const m = LASTFM_RE.exec(text || "");
+    if (m) tryUser(m[1]);
+  }
+
+  /* ============================ demo mode (no real channel/key needed) ============================ */
+  function startDemo() {
+    const DEMO_ALBUMS = [
+      { name: "Currents", artist: "Tame Impala", img: "" },
+      { name: "In Rainbows", artist: "Radiohead", img: "" },
+      { name: "Discovery", artist: "Daft Punk", img: "" },
+      { name: "good kid, m.A.A.d city", artist: "Kendrick Lamar", img: "" },
+      { name: "Blonde", artist: "Frank Ocean", img: "" },
+      { name: "Random Access Memories", artist: "Daft Punk", img: "" },
+      { name: "To Pimp a Butterfly", artist: "Kendrick Lamar", img: "" },
+      { name: "Innerspeaker", artist: "Tame Impala", img: "" },
+      { name: "Channel Orange", artist: "Frank Ocean", img: "" },
+    ];
+    const swatches = ["#bd93f9","#8be9fd","#50fa7b","#ffb86c","#ff79c6","#f1fa8c","#ff5555","#6272a4","#44475a"];
+    const names = ["shadowmere22", "pixel_pusher", "biggus_donatus"];
+    let i = 0;
+    function next() {
+      if (!locked) {
+        const user = names[i % names.length]; i++;
+        userEl.textContent = user;
+        tilesEl.innerHTML = "";
+        DEMO_ALBUMS.forEach((a, idx) => {
+          const t = document.createElement("div");
+          t.className = "tile";
+          t.style.background = swatches[idx % swatches.length];
+          const cap = document.createElement("div");
+          cap.className = "cap";
+          cap.innerHTML = "<b></b>";
+          cap.querySelector("b").textContent = a.name;
+          cap.append(document.createTextNode(a.artist));
+          t.appendChild(cap);
+          tilesEl.appendChild(t);
+        });
+        gridEl.classList.add("show");
+        lockFor(CONFIG.lockMs);
+      }
+      setTimeout(next, Math.min(CONFIG.lockMs, 8000) + 1500);
+    }
+    setLockUI();
+    next();
+  }
+
+  /* ==================== TWITCH CHAT (anonymous IRC read) ==================== */
+  function sanitizeChannel(v) {
+    return (v || "").trim()
+      .replace(/^#/, "")
+      .replace(/^https?:\/\/(www\.)?twitch\.tv\//i, "")
+      .split(/[/?\s]/)[0]
+      .toLowerCase();
+  }
+
+  let channel = sanitizeChannel(params.get("channel") || localStorage.getItem(CHANNEL_KEY) || "");
+
+  function setStatus(text, cls) {
+    statusEl.style.display = "";
+    statusEl.className = cls || "";
+    statusEl.textContent = text;
+  }
+
+  let ws = null, wsRetry = null;
+  function connectIRC() {
+    if (!channel) return;
+    try { ws = new WebSocket("wss://irc-ws.chat.twitch.tv:443"); } catch { return; }
+    setStatus("connecting…", "");
+    ws.onopen = () => {
+      ws.send("CAP REQ :twitch.tv/tags");
+      ws.send("NICK justinfan" + Math.floor(Math.random() * 900000 + 100000));
+      ws.send("JOIN #" + channel);
+      setStatus("● #" + channel, "live");
+      setTimeout(() => (statusEl.style.display = "none"), 3000);
+    };
+    ws.onmessage = (e) => {
+      for (const line of e.data.split("\r\n")) {
+        if (!line) continue;
+        if (line.startsWith("PING")) { ws.send("PONG :tmi.twitch.tv"); continue; }
+        const p = parseLine(line);
+        if (p) onChat(p.name, p.msg);
+      }
+    };
+    ws.onclose = () => {
+      statusEl.style.display = "";
+      setStatus("reconnecting…", "err");
+      clearTimeout(wsRetry);
+      wsRetry = setTimeout(connectIRC, 3000);
+    };
+    ws.onerror = () => { try { ws.close(); } catch {} };
+  }
+
+  // Pure parser: IRC line -> {name,msg} for PRIVMSG lines, else null.
+  function parseLine(line) {
+    if (!line.includes("PRIVMSG")) return null;
+    let tags = {}, rest = line;
+    if (line[0] === "@") {
+      const sp = line.indexOf(" ");
+      for (const kv of line.slice(1, sp).split(";")) {
+        const i = kv.indexOf("=");
+        tags[kv.slice(0, i)] = kv.slice(i + 1);
+      }
+      rest = line.slice(sp + 1);
+    }
+    const mi = rest.indexOf("PRIVMSG");
+    const ci = rest.indexOf(":", mi);
+    if (ci < 0) return null;
+    const msg = rest.slice(ci + 1);
+    const name = tags["display-name"] || (rest.match(/^:([^!]+)!/) || [])[1] || "viewer";
+    return { name, msg };
+  }
+
+  connectBtn.addEventListener("click", () => {
+    const v = sanitizeChannel(channelInput.value);
+    const k = apikeyInput.value.trim();
+    if (!v || !k) return;
+    channel = v; apikey = k;
+    localStorage.setItem(CHANNEL_KEY, channel);
+    localStorage.setItem(APIKEY_KEY, apikey);
+    gateEl.style.display = "none";
+    setLockUI();
+    connectIRC();
+  });
+  [channelInput, apikeyInput].forEach((el) =>
+    el.addEventListener("keydown", (e) => { if (e.key === "Enter") connectBtn.click(); })
+  );
+
+  /* ============================ boot ============================ */
+  if (DEMO) {
+    startDemo();
+  } else if (channel && apikey) {
+    setLockUI();
+    connectIRC();
+  } else {
+    channelInput.value = channel;
+    apikeyInput.value = apikey;
+    gateEl.style.display = "";
+  }
+  </script>
+</body>
+</html>

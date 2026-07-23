@@ -1,0 +1,62 @@
+3x3 - OBS Overlay
+==================
+
+WHAT THIS IS
+  Watches chat for a Last.fm profile link (last.fm/user/name) and, if that
+  person's top albums are public and there are at least 9 of them with cover
+  art, stitches together a 3x3 grid of them as a Dracula-themed card.
+
+  A small lock pill sits bottom-right at all times:
+    unlocked  - watching chat, ready to swap in a newly-detected profile
+    locked    - showing someone's grid, counting down 5 minutes before it
+                will accept a different profile link
+
+  No Twitch login needed to read chat - anonymous/read-only, same as Chat
+  Bubbles and Pinned Message. Last.fm's public API does need a free API key
+  (see SETUP below) - that's a per-app key you request once, not a login for
+  each viewer whose grid gets shown.
+
+WHAT'S IN THIS FOLDER
+  3by3.html          - the overlay (the only important file)
+  READ-ME-FIRST.txt  - this file
+
+SETUP
+  1. Get a free Last.fm API key (one-time): last.fm/api/account/create
+     Any app name/description works - you just need the "API key" it gives
+     you afterward.
+  2. Start the local server (double-click start-windows.bat one folder up,
+     or `python3 -m http.server 8777` from the repo root).
+  3. Add a "Browser Source":
+       - URL:    http://localhost:8777/3by3/3by3.html
+       - Width:  520     Height: 620   (the grid card sits near the top and
+         the lock pill sits bottom-right, so give it real height - unlike
+         the banner overlays this one isn't just a thin strip)
+  4. Right-click -> Interact, fill in your Twitch channel name and the
+     Last.fm API key, click "Connect". (One time - both are remembered in
+     this browser source after that.) Or skip the box with
+     ?channel=yourname&apikey=yourkey in the URL.
+  5. Post a last.fm/user/yourname link in your own chat to test it, or use
+     ?demo=1 (below) to preview without a channel or API key.
+
+TIPS
+  - Add ?demo=1 to preview with a simulated rotation of fake profiles and
+    colored placeholder tiles, no real channel or API key needed:
+        http://localhost:8777/3by3/3by3.html?demo=1
+  - "Enough albums" means at least 9 top albums that also have cover art
+    returned by Last.fm - some accounts have 9+ scrobbled albums but Last.fm
+    doesn't have art for all of them, in which case this treats it the same
+    as not having enough and just leaves the last successful grid on screen.
+  - Whether a private Last.fm profile blocks this depends on exactly which
+    privacy setting the person has (Last.fm's API doesn't publish a single
+    clean "getTopAlbums works but getRecentTracks doesn't" rule) - in
+    practice, if the API call comes back empty or errors, this overlay just
+    quietly ignores that link and stays unlocked rather than showing an
+    error.
+  - CONFIG.period (default "overall") controls the top-albums window - set
+    it to "7day", "1month", "3month", "6month", or "12month" in 3by3.html if
+    you'd rather show recent favorites than all-time ones.
+  - CONFIG.lockMs (default 5 minutes) is the cooldown after a successful
+    swap. The lock pill shows a live countdown; a new last.fm link posted
+    mid-countdown is simply ignored.
+  - Known bots are filtered out by default (CONFIG.ignore in 3by3.html),
+    same list as the other overlays.
