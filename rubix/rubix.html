@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Self-Solving Rubix Cube Stream Element</title>
+<meta name="description" content="Transparent OBS-ready 3D Rubix cube that scrambles, then slowly solves itself over one minute, looping forever." />
+<style>
+  :root {
+    --cubie: 54px;
+    --gap: 4px;
+    --shadow: drop-shadow(0 18px 26px rgba(0,0,0,.45));
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background: transparent;
+    font-family: "Segoe UI", Inter, system-ui, sans-serif;
+  }
+
+  main {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    perspective: 780px;
+    pointer-events: none;
+  }
+
+  #scene {
+    position: relative;
+    width: 0;
+    height: 0;
+    transform-style: preserve-3d;
+    filter: var(--shadow);
+  }
+
+  .cubie {
+    position: absolute;
+    top: 0;
+    left: 0;
+    transform-style: preserve-3d;
+    will-change: transform;
+  }
+
+  .face {
+    position: absolute;
+    top: 0;
+    left: 0;
+    border-radius: 14%;
+    box-shadow:
+      inset 0 0 0 2px rgba(0,0,0,.42),
+      inset 0 0 12px rgba(255,255,255,.08),
+      inset 0 -10px 18px rgba(0,0,0,.12);
+  }
+
+  #status {
+    position: fixed;
+    right: 16px;
+    bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 122px;
+    padding: 6px 12px;
+    border: 1px solid rgba(255,255,255,.14);
+    border-radius: 999px;
+    background: rgba(10, 12, 18, .52);
+    color: #f8f8f2;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: .28px;
+    text-transform: uppercase;
+    backdrop-filter: blur(8px);
+    text-shadow: 0 1px 2px rgba(0,0,0,.8);
+    pointer-events: none;
+  }
+
+  #status .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #50fa7b;
+    box-shadow: 0 0 12px currentColor;
+  }
+
+  #status.scrambling .dot { background: #ffb86c; }
+
+  @media (max-width: 520px) {
+    :root { --cubie: 42px; --gap: 3px; }
+    #status { right: 10px; bottom: 10px; font-size: 10px; min-width: 104px; }
+  }
+</style>
+</head>
+<body>
+<main aria-label="Animated self-solving Rubix cube stream element">
+  <div id="scene" aria-hidden="true"></div>
+</main>
+<div id="status" aria-live="polite"><span class="dot"></span><span id="statusText">Scrambling</span></div>
+
+<script>
+(() => {
+  "use strict";
+
+  const params = new URLSearchParams(location.search);
+  const CUBE_SIZE = Number(params.get("size")) || parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--cubie"));
+  const GAP = Number(params.get("gap")) || parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--gap"));
+  const SPACING = CUBE_SIZE + GAP;
+  const HALF = CUBE_SIZE / 2;
+  const SCRAMBLE_MOVES = Number(params.get("moves")) || 24;
+  const SCRAMBLE_MS = Number(params.get("scrambleMs")) || 210;
+  const SOLVE_MS = Number(params.get("solveMs")) || 60000;
+
+  const scene = document.getElementById("scene");
+  const status = document.getElementById("status");
+  const statusText = document.getElementById("statusText");
+
+  const easeInOutQuad = (t) => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+  const identity = () => [1,0,0, 0,1,0, 0,0,1];
+  const rotX = (a) => { const c = Math.cos(a), s = Math.sin(a); return [1,0,0, 0,c,s, 0,-s,c]; };
+  const rotY = (a) => { const c = Math.cos(a), s = Math.sin(a); return [c,0,-s, 0,1,0, s,0,c]; };
+  const rotZ = (a) => { const c = Math.cos(a), s = Math.sin(a); return [c,s,0, -s,c,0, 0,0,1]; };
+  const rotAxis = (axis, angle) => axis === 0 ? rotX(angle) : axis === 1 ? rotY(angle) : rotZ(angle);
+
+  function mulMV(m, v) {
+    return [
+      m[0] * v[0] + m[3] * v[1] + m[6] * v[2],
+      m[1] * v[0] + m[4] * v[1] + m[7] * v[2],
+      m[2] * v[0] + m[5] * v[1] + m[8] * v[2],
+    ];
+  }
+
+  function mulMM(a, b) {
+    const out = new Array(9);
+    for (let col = 0; col < 3; col++) {
+      const r = mulMV(a, [b[col * 3], b[col * 3 + 1], b[col * 3 + 2]]);
+      out[col * 3] = r[0];
+      out[col * 3 + 1] = r[1];
+      out[col * 3 + 2] = r[2];
+    }
+    return out;
+  }
+
+  function matrix3d(m, tx, ty, tz) {
+    return `matrix3d(${m[0]},${m[1]},${m[2]},0, ${m[3]},${m[4]},${m[5]},0, ${m[6]},${m[7]},${m[8]},0, ${tx},${ty},${tz},1)`;
+  }
+
+  const MOVES = {
+    U: {axis: 1, layer: -1, angle: Math.PI / 2}, "U'": {axis: 1, layer: -1, angle: -Math.PI / 2},
+    D: {axis: 1, layer:  1, angle: -Math.PI / 2}, "D'": {axis: 1, layer:  1, angle:  Math.PI / 2},
+    L: {axis: 0, layer: -1, angle: Math.PI / 2}, "L'": {axis: 0, layer: -1, angle: -Math.PI / 2},
+    R: {axis: 0, layer:  1, angle: -Math.PI / 2}, "R'": {axis: 0, layer:  1, angle:  Math.PI / 2},
+    F: {axis: 2, layer:  1, angle: Math.PI / 2}, "F'": {axis: 2, layer:  1, angle: -Math.PI / 2},
+    B: {axis: 2, layer: -1, angle: -Math.PI / 2}, "B'": {axis: 2, layer: -1, angle:  Math.PI / 2},
+  };
+
+  const inverseMove = (name) => name.endsWith("'") ? name.slice(0, -1) : `${name}'`;
+
+  function generateScramble(count) {
+    const names = Object.keys(MOVES);
+    const sequence = [];
+    let lastAxis = -1;
+    for (let i = 0; i < count; i++) {
+      let name = names[(Math.random() * names.length) | 0];
+      while (MOVES[name].axis === lastAxis) name = names[(Math.random() * names.length) | 0];
+      sequence.push(name);
+      lastAxis = MOVES[name].axis;
+    }
+    return sequence;
+  }
+
+  const stickerFaces = [
+    {dir: [ 1, 0, 0], color: "#e64b3d"},
+    {dir: [-1, 0, 0], color: "#ff9f43"},
+    {dir: [0,  1, 0], color: "#f4d03f"},
+    {dir: [0, -1, 0], color: "#f8f8f2"},
+    {dir: [0, 0,  1], color: "#2ecc71"},
+    {dir: [0, 0, -1], color: "#3b82f6"},
+  ];
+  const faceOrientation = [rotY(Math.PI / 2), rotY(-Math.PI / 2), rotX(-Math.PI / 2), rotX(Math.PI / 2), identity(), rotY(Math.PI)];
+  const interior = "#16181f";
+  const cubies = [];
+
+  for (let x = -1; x <= 1; x++) {
+    for (let y = -1; y <= 1; y++) {
+      for (let z = -1; z <= 1; z++) {
+        if (x === 0 && y === 0 && z === 0) continue;
+        const el = document.createElement("div");
+        el.className = "cubie";
+        el.style.width = `${CUBE_SIZE}px`;
+        el.style.height = `${CUBE_SIZE}px`;
+        el.style.marginLeft = `${-HALF}px`;
+        el.style.marginTop = `${-HALF}px`;
+
+        for (let i = 0; i < stickerFaces.length; i++) {
+          const {dir, color} = stickerFaces[i];
+          const face = document.createElement("div");
+          face.className = "face";
+          face.style.width = `${CUBE_SIZE}px`;
+          face.style.height = `${CUBE_SIZE}px`;
+          face.style.background = dir[0] * x + dir[1] * y + dir[2] * z === 1 ? color : interior;
+          face.style.transform = matrix3d(faceOrientation[i], dir[0] * HALF, dir[1] * HALF, dir[2] * HALF);
+          el.appendChild(face);
+        }
+
+        scene.appendChild(el);
+        cubies.push({pos: [x, y, z], ori: identity(), el, anim: null, before: null});
+      }
+    }
+  }
+
+  function render() {
+    for (const c of cubies) {
+      const p = c.anim ? c.anim.pos : c.pos;
+      const o = c.anim ? c.anim.ori : c.ori;
+      c.el.style.transform = matrix3d(o, p[0] * SPACING, p[1] * SPACING, p[2] * SPACING);
+    }
+  }
+
+  function commitMove(name) {
+    const move = MOVES[name];
+    const mat = rotAxis(move.axis, move.angle);
+    for (const c of cubies) {
+      if (Math.round(c.pos[move.axis]) !== move.layer) continue;
+      c.pos = mulMV(mat, c.pos).map(Math.round);
+      c.ori = mulMM(mat, c.ori).map(Math.round);
+    }
+  }
+
+  let phase = "scramble";
+  let queue = generateScramble(SCRAMBLE_MOVES);
+  let index = 0;
+  let moveStart = null;
+  let phaseStart = performance.now();
+  let movingCubies = [];
+
+  function beginMove(now) {
+    moveStart = now;
+    const move = MOVES[queue[index]];
+    movingCubies = cubies.filter((c) => Math.round(c.pos[move.axis]) === move.layer);
+    for (const c of movingCubies) c.before = {pos: c.pos, ori: c.ori};
+  }
+
+  function switchPhase(now) {
+    if (phase === "scramble") {
+      phase = "solve";
+      queue = queue.slice().reverse().map(inverseMove);
+    } else {
+      phase = "scramble";
+      queue = generateScramble(SCRAMBLE_MOVES);
+    }
+    index = 0;
+    moveStart = null;
+    phaseStart = now;
+  }
+
+  function updateStatus(now) {
+    status.classList.toggle("scrambling", phase === "scramble");
+    if (phase === "solve") {
+      const remaining = Math.max(0, SOLVE_MS - (now - phaseStart));
+      const seconds = Math.ceil(remaining / 1000);
+      statusText.textContent = `Solving ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+    } else {
+      statusText.textContent = "Scrambling";
+    }
+  }
+
+  function tick(now) {
+    if (moveStart === null) beginMove(now);
+
+    const name = queue[index];
+    const move = MOVES[name];
+    const duration = phase === "solve" ? SOLVE_MS / queue.length : SCRAMBLE_MS;
+    const t = Math.min(1, (now - moveStart) / duration);
+    const partial = rotAxis(move.axis, move.angle * easeInOutQuad(t));
+
+    for (const c of movingCubies) {
+      c.anim = {
+        pos: mulMV(partial, c.before.pos),
+        ori: mulMM(partial, c.before.ori),
+      };
+    }
+
+    render();
+
+    if (t >= 1) {
+      commitMove(name);
+      for (const c of movingCubies) c.anim = null;
+      index += 1;
+      moveStart = null;
+      if (index >= queue.length) switchPhase(now);
+    }
+
+    scene.style.transform = `rotateX(${Math.sin(now / 9000) * 8}deg) rotateY(${(now / 72) % 360}deg)`;
+    updateStatus(now);
+    requestAnimationFrame(tick);
+  }
+
+  window.addEventListener("keydown", (event) => {
+    if (event.code === "Space" && moveStart !== null) moveStart -= 100000;
+  });
+
+  render();
+  requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>
