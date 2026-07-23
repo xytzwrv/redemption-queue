@@ -1,43 +1,41 @@
 Rubix Cube Stream Element
 =========================
 
-OBS Browser Source URL:
+Main URL:
 https://xytzwrv.github.io/redemption-queue/rubix/
 
-OBS-safe audio-reactive URL (recommended for OBS Browser Source):
-https://xytzwrv.github.io/redemption-queue/rubix/?mic=obs&obsInput=Mic%2FAux
+Full OBS-friendly settings panel:
+https://xytzwrv.github.io/redemption-queue/rubix/?controls=1
 
-Audio-reactive URL with visible sensitivity slider:
+OBS-safe audio-reactive URL with full settings panel:
 https://xytzwrv.github.io/redemption-queue/rubix/?mic=obs&obsInput=Mic%2FAux&controls=1
 
 What it does:
 - Transparent background for stream overlays
 - Real Three.js/WebGL 3D cubies with colored sticker faces
 - Face turns are animated as actual 3D rotations
-- Scrambles itself quickly
-- Slowly solves itself over 60 seconds in normal mode
-- With ?mic=obs, reads OBS WebSocket audio meter levels instead of requesting browser mic permission
-- With ?controls=1, shows a sensitivity slider; click the cube to hide/show controls in OBS
-- With dB calibration, dbMin maps to 0% and dbMax maps to 100%
-- At 100%, solve speed defaults to 10x normal speed; at 0%, it defaults to 0.1x
+- Scrambles itself quickly, solves, then loops forever
+- With ?mic=obs, reads OBS WebSocket audio meters instead of browser mic permission
+- With ?controls=1, shows a full settings panel; click the cube to hide/show it in OBS
+- The panel controls audio, dB calibration, speed, cube size/timing, and face image URLs
+- Apply URL reloads the browser source with the chosen flags; Copy URL copies the configured URL
+- dB calibration: dbMin maps to 0%, dbMax maps to 100%
+- At 100%, solve speed defaults to maxSpeed=10, meaning 10x normal solve speed
 - With image URL flags, still images are split into 3x3 face stickers and solve back together
-- Randomizes again and loops forever
 
 OBS WebSocket setup for ?mic=obs:
 1. In OBS: Tools > WebSocket Server Settings.
 2. Enable the WebSocket server on port 4455.
 3. Recommended easiest local setup: disable authentication.
-4. Add the Browser Source URL with your input name, for example:
+4. Use this URL and adjust input/settings from the panel:
    https://xytzwrv.github.io/redemption-queue/rubix/?mic=obs&obsInput=Mic%2FAux&controls=1
-5. If your mic source has a different name, URL-encode it in obsInput.
-
-Audio calibration examples:
-- dbMin=-55 means -55 dB and lower is 0%.
-- dbMax=-18 means -18 dB and higher is 100%.
-- maxSpeed=10 means 100% audio solves 10x faster than normal.
+5. If your mic source has a different name, set OBS input in the panel or URL-encode it in obsInput.
 
 Example calibrated OBS URL:
 https://xytzwrv.github.io/redemption-queue/rubix/?mic=obs&obsInput=Mic%2FAux&controls=1&dbMin=-55&dbMax=-18&maxSpeed=10
+
+Clean URL after tuning, without visible controls:
+https://xytzwrv.github.io/redemption-queue/rubix/?mic=obs&obsInput=Mic%2FAux&dbMin=-55&dbMax=-18&maxSpeed=10&sensitivity=1.5
 
 Image face examples:
 - Same image on all six faces:
@@ -47,29 +45,23 @@ Image face examples:
 
 Image URLs should be URL-encoded and served over HTTPS with CORS allowed. PNG, JPG, JPEG, WebP, and GIF still frames work as browser image textures.
 
-Optional URL params:
+Major URL params:
+- controls=1     show full settings panel; click cube to hide/show it
 - mic=obs        OBS-safe mode using OBS WebSocket audio meters
-- controls=1     show the sensitivity slider; click the cube to hide/show it
-- sensitivity=1.5 set initial sensitivity without showing slider; range 0.1 to 4
+- obsInput=Mic%2FAux exact OBS input name to listen to; blank uses loudest input
 - dbMin=-60      dB level that maps to 0% audio response
 - dbMax=-12      dB level that maps to 100% audio response
 - minSpeed=0.1   solve speed multiplier at 0% audio
 - maxSpeed=10    solve speed multiplier at 100% audio
-- obsInput=Mic%2FAux exact OBS input name to listen to; blank uses loudest input
-- obsHost=127.0.0.1 OBS WebSocket host
-- obsPort=4455   OBS WebSocket port
-- obsPassword=... OBS WebSocket password, if auth is enabled
-- mic=1          direct browser microphone mode; often blocked by OBS Browser Source
+- sensitivity=1.5 audio multiplier; higher means quieter sounds solve faster
 - img=URL        one still image split across every cube face
-- frontImg=URL   still image for front face
-- backImg=URL    still image for back face
-- leftImg=URL    still image for left face
-- rightImg=URL   still image for right face
-- upImg=URL      still image for top face
-- downImg=URL    still image for bottom face
+- frontImg/backImg/leftImg/rightImg/upImg/downImg=URL per-face still images
+- scale=0.82     overall cube scale
 - size=1         cubie size in Three.js world units
-- scale=0.82     overall scale override for tiny OBS sources
 - gap=0.08       spacing between cubies
 - solveMs=60000  normal-mode solve duration in milliseconds
 - moves=30       number of scramble moves
 - scrambleMs=220 speed per scramble move
+- obsHost=127.0.0.1 OBS WebSocket host
+- obsPort=4455   OBS WebSocket port
+- obsPassword=... OBS WebSocket password, if auth is enabled
