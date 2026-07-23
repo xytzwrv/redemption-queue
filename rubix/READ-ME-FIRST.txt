@@ -9,20 +9,19 @@ https://xytzwrv.github.io/redemption-queue/rubix/rubix.html
 
 What it does:
 - Transparent background for stream overlays
-- Actual CSS 3D cubies with colored faces
-- Keeps an isometric angle so it doesn't look flat/front-on
-- Auto scales down for small OBS browser sources to avoid clipping
+- Real Three.js/WebGL 3D cubies with colored sticker faces
+- Face turns are animated as actual 3D rotations
 - Scrambles itself quickly
 - Slowly solves itself over 60 seconds
 - Randomizes again and loops forever
 
 Optional URL params:
-- size=64        cubie size in pixels
-- scale=0.85     overall scale override for tiny OBS sources
-- gap=4          spacing between cubies
+- size=1         cubie size in Three.js world units
+- scale=0.82     overall scale override for tiny OBS sources
+- gap=0.08       spacing between cubies
 - solveMs=60000  solve duration in milliseconds
 - moves=30       number of scramble moves
-- scrambleMs=210 speed per scramble move
+- scrambleMs=220 speed per scramble move
 
 Example:
-https://xytzwrv.github.io/redemption-queue/rubix/?size=64&scale=0.85&solveMs=60000&moves=30
+https://xytzwrv.github.io/redemption-queue/rubix/?scale=0.75&solveMs=60000&moves=30
