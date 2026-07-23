@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pinned Message</title>
+<style>
+  /* ---------- Dracula palette (same values chatbubbles.html uses) ---------- */
+  :root {
+    --bg:      #282a36;
+    --line:    #44475a;
+    --fg:      #f8f8f2;
+    --comment: #6272a4;
+    --green:   #50fa7b;
+    --purple:  #bd93f9;
+    --pink:    #ff79c6;
+    --cyan:    #8be9fd;
+    --yellow:  #f1fa8c;
+    --orange:  #ffb86c;
+    --red:     #ff5555;
+
+    --card:    rgba(40, 42, 54, 0.92);
+    --radius:  14px;
+    --accent:  var(--purple);   /* set per-pin from LEVEL_COLOR */
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: transparent;   /* OBS overlay: keep transparent */
+    overflow: hidden;
+    font-family: "Segoe UI", "Inter", system-ui, sans-serif;
+  }
+
+  /* ---------- the pin card itself ---------- */
+  #pin {
+    position: fixed; top: 28px; left: 50%;
+    width: min(92vw, 640px);
+    transform: translate(-50%, -140%);
+    opacity: 0;
+    transition: transform .38s cubic-bezier(.2,.9,.3,1.2), opacity .3s ease;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: 0 14px 40px rgba(0,0,0,.5), 0 0 0 1px var(--accent) inset;
+    padding: 14px 18px 16px;
+    color: var(--fg);
+    backdrop-filter: blur(10px);
+  }
+  #pin.show { transform: translate(-50%, 0); opacity: 1; }
+
+  #pin .row1 { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  #pin .badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 11px; font-weight: 800; letter-spacing: .6px; text-transform: uppercase;
+    color: var(--bg); background: var(--accent);
+    border-radius: 999px; padding: 3px 10px;
+  }
+  #pin .level { font-size: 11px; font-weight: 700; color: var(--accent); }
+  #pin .amount { margin-left: auto; font-size: 13px; font-weight: 800; color: var(--accent); }
+
+  #pin .body { font-size: 16px; line-height: 1.45; }
+  #pin .user { font-weight: 800; margin-right: 6px; }
+  #pin .msg  { word-break: break-word; }
+
+  #pin .bar {
+    margin-top: 12px; height: 4px; border-radius: 999px;
+    background: var(--line); overflow: hidden;
+  }
+  #pin .bar > i {
+    display: block; height: 100%; width: 100%; background: var(--accent);
+    transform-origin: left center;
+    animation: pinDrain linear forwards;
+  }
+  @keyframes pinDrain { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+
+  /* ---------- status pill + connect gate (bottom-left, out of the way) ---------- */
+  #status {
+    position: fixed; left: 16px; bottom: 16px;
+    font-size: 12px; letter-spacing: .5px;
+    padding: 4px 10px; border-radius: 999px;
+    background: var(--card); border: 1px solid var(--line);
+    color: var(--comment);
+  }
+  #status.live { color: var(--green); border-color: var(--green); }
+  #status.err  { color: var(--red);  border-color: var(--red);  }
+
+  #gate {
+    position: fixed; left: 16px; bottom: 16px; max-width: 360px;
+    color: var(--fg);
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 18px 20px;
+    box-shadow: 0 6px 18px rgba(0,0,0,.45);
+  }
+  #gate h2 { margin: 0 0 6px; font-size: 16px; color: var(--purple); }
+  #gate p  { margin: 0 0 14px; font-size: 13px; line-height: 1.5; color: var(--comment); }
+  #gate input {
+    width: 100%; background: rgba(0,0,0,.25); border: 1px solid var(--line);
+    border-radius: 8px; padding: 8px 10px; margin-bottom: 10px;
+    color: var(--fg); font-size: 14px;
+  }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--purple); color: var(--bg);
+    border: none; border-radius: 8px; padding: 10px 16px;
+    font-size: 14px; font-weight: 700; cursor: pointer;
+    transition: transform .1s, filter .15s;
+  }
+  .btn:hover { filter: brightness(1.08); }
+  .btn:active { transform: scale(.97); }
+</style>
+</head>
+<body>
+  <div id="pin">
+    <div class="row1">
+      <span class="badge">📌 Pinned</span>
+      <span class="level" id="pinLevel"></span>
+      <span class="amount" id="pinAmount"></span>
+    </div>
+    <div class="body"><span class="user" id="pinUser"></span><span class="msg" id="pinMsg"></span></div>
+    <div class="bar"><i id="pinBar"></i></div>
+  </div>
+
+  <div id="status" style="display:none"></div>
+  <div id="gate" style="display:none">
+    <h2>Connect chat</h2>
+    <p>Type your Twitch channel name to watch for Hype Chat pins anonymously - no login needed.</p>
+    <input id="channelInput" type="text" placeholder="yourchannel" autocomplete="off" spellcheck="false">
+    <button id="connectBtn" class="btn">Connect Chat</button>
+  </div>
+
+  <script>
+  /* ================================================================
+     SETUP
+     ----------------------------------------------------------------
+     Mirrors Twitch's own "pinned chat message" banner (a Hype Chat -
+     a viewer pays to pin their message for a while) in a Dracula-
+     themed card. No Twitch login needed - reads chat anonymously
+     (read-only, IRC-over-WebSocket with a "justinfan" guest nick),
+     same approach as chatbubbles.html. Type your channel name once
+     in the on-screen gate (or add ?channel=yourname to the URL);
+     it's remembered in localStorage after that.
+     ================================================================ */
+  const CONFIG = {
+    ignore: ["nightbot","streamelements","streamlabs","moobot","sery_bot","soundalerts","fossabot","wizebot"],
+    maxMessageChars: 220,   // longer pinned messages are truncated with "…"
+
+    // Best-effort mapping of Twitch's Hype Chat pin levels -> how long the
+    // pin stays up in Twitch's own chat. Twitch doesn't publish this as a
+    // stable, versioned contract, so treat these as approximate - bump a
+    // level here if your own Hype Chats visibly outlast (or undershoot)
+    // what this overlay shows.
+    levelDurationMs: {
+      ONE:   30    * 1000,
+      TWO:   150   * 1000,
+      THREE: 300   * 1000,
+      FOUR:  600   * 1000,
+      FIVE:  1800  * 1000,
+      SIX:   3600  * 1000,
+      SEVEN: 7200  * 1000,
+      EIGHT: 10800 * 1000,
+      NINE:  14400 * 1000,
+      TEN:   18000 * 1000,
+    },
+    fallbackDurationMs: 30 * 1000,
+
+    // Hard cap so a top-tier Hype Chat (real duration up to 5 hours)
+    // doesn't glue the overlay to the screen - it still shows, just not
+    // past this. Set higher (or to a levelDurationMs value) if you want
+    // big pins to really linger.
+    maxDisplayMs: 10 * 60 * 1000,
+  };
+
+  // Our own Dracula-palette ramp for the level accent color - NOT Twitch's
+  // official Hype Chat colors (Twitch doesn't expose those over IRC).
+  const LEVEL_COLOR = {
+    ONE: "var(--cyan)", TWO: "var(--green)", THREE: "var(--yellow)",
+    FOUR: "var(--orange)", FIVE: "var(--pink)", SIX: "var(--red)",
+    SEVEN: "var(--purple)", EIGHT: "var(--purple)", NINE: "var(--purple)",
+    TEN: "var(--fg)",
+  };
+  const LEVEL_NUM = { ONE:1, TWO:2, THREE:3, FOUR:4, FIVE:5, SIX:6, SEVEN:7, EIGHT:8, NINE:9, TEN:10 };
+
+  const params = new URLSearchParams(location.search);
+  const DEMO   = params.get("demo") === "1";
+  const CHANNEL_KEY = "pinnedmessage:channel";
+
+  const pinEl     = document.getElementById("pin");
+  const userEl    = document.getElementById("pinUser");
+  const msgEl     = document.getElementById("pinMsg");
+  const levelEl   = document.getElementById("pinLevel");
+  const amountEl  = document.getElementById("pinAmount");
+  const barEl     = document.getElementById("pinBar");
+  const statusEl  = document.getElementById("status");
+  const gateEl    = document.getElementById("gate");
+  const channelInput = document.getElementById("channelInput");
+  const connectBtn   = document.getElementById("connectBtn");
+
+  /* ============================ username color (fallback if a chatter has no set color) ============================ */
+  const PALETTE = ["#bd93f9","#8be9fd","#50fa7b","#ffb86c","#ff79c6","#f1fa8c","#ff5555"];
+  function colorFor(name) {
+    let h = 0; for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+    return PALETTE[h % PALETTE.length];
+  }
+
+  /* ============================ queue + display ============================
+     Twitch doesn't document a public priority rule for multiple simultaneous
+     Hype Chats, so this keeps it simple: one pin on screen at a time, first
+     in first out, each held for its (capped) duration. */
+  let pinQueue = [];
+  let current = null;
+  let hideTimer = null, nextTimer = null;
+
+  function enqueuePin(pin) {
+    pinQueue.push(pin);
+    if (!current) showNext();
+  }
+
+  function showNext() {
+    const pin = pinQueue.shift();
+    if (!pin) { current = null; return; }
+    current = pin;
+    render(pin);
+    clearTimeout(hideTimer);
+    hideTimer = setTimeout(hide, pin.duration);
+  }
+
+  function hide() {
+    pinEl.classList.remove("show");
+    clearTimeout(nextTimer);
+    nextTimer = setTimeout(() => { current = null; showNext(); }, 380); // matches CSS transition
+  }
+
+  function render(pin) {
+    document.documentElement.style.setProperty("--accent", pin.accent);
+    userEl.textContent = pin.name;
+    userEl.style.color = pin.color;
+    msgEl.textContent = " " + pin.text;
+    levelEl.textContent = "Level " + pin.levelNum;
+    amountEl.textContent = pin.amountText;
+
+    // Restart the drain-bar animation at the right duration.
+    barEl.style.animation = "none";
+    void barEl.offsetWidth; // force reflow so the animation restarts
+    barEl.style.animation = "pinDrain " + pin.duration + "ms linear forwards";
+
+    pinEl.classList.add("show");
+  }
+
+  /* ============================ incoming Hype Chat -> pin ============================ */
+  function onPrivmsg(tags, name, msg) {
+    const level = tags["pinned-chat-paid-level"];
+    if (!level) return; // ordinary chat message - this overlay only cares about pins
+    if (CONFIG.ignore.includes((name || "").toLowerCase())) return;
+
+    const amountMinor = Number(tags["pinned-chat-paid-amount"] || 0);
+    const currency = tags["pinned-chat-paid-currency"] || "USD";
+    const exponent = Number(tags["pinned-chat-paid-exponent"] || 2);
+    const amount = amountMinor / Math.pow(10, exponent);
+    let amountText = amount.toFixed(exponent);
+    try { amountText = new Intl.NumberFormat(undefined, { style: "currency", currency }).format(amount); } catch {}
+
+    let text = (msg || "").trim();
+    if (text.length > CONFIG.maxMessageChars) text = text.slice(0, CONFIG.maxMessageChars) + "…";
+
+    const duration = Math.min(CONFIG.levelDurationMs[level] || CONFIG.fallbackDurationMs, CONFIG.maxDisplayMs);
+
+    enqueuePin({
+      name: name || "viewer",
+      text,
+      level,
+      levelNum: LEVEL_NUM[level] || "?",
+      accent: LEVEL_COLOR[level] || "var(--purple)",
+      amountText,
+      color: (tags.color && tags.color.trim()) || colorFor(name || "viewer"),
+      duration,
+    });
+  }
+
+  /* ============================ demo mode (no real channel needed) ============================ */
+  function startDemo() {
+    const samples = [
+      { name: "biggus_donatus", level: "ONE",   amount: 150,   msg: "let's gooo!!" },
+      { name: "shadowmere22",   level: "THREE", amount: 750,   msg: "been watching since day one, love the stream <3" },
+      { name: "pixel_pusher",   level: "FIVE",  amount: 3000,  msg: "take my money and read this out loud" },
+      { name: "no_scope_nadia", level: "TWO",   amount: 350,   msg: "clip that last play please" },
+    ];
+    let i = 0;
+    function next() {
+      const s = samples[i % samples.length]; i++;
+      onPrivmsg(
+        { "pinned-chat-paid-level": s.level, "pinned-chat-paid-amount": String(s.amount),
+          "pinned-chat-paid-currency": "USD", "pinned-chat-paid-exponent": "2", color: colorFor(s.name) },
+        s.name, s.msg
+      );
+      setTimeout(next, Math.min(CONFIG.levelDurationMs[s.level], CONFIG.maxDisplayMs, 8000) + 1500);
+    }
+    next();
+  }
+
+  /* ==================== TWITCH CHAT (anonymous IRC read) ==================== */
+  function sanitizeChannel(v) {
+    return (v || "").trim()
+      .replace(/^#/, "")
+      .replace(/^https?:\/\/(www\.)?twitch\.tv\//i, "")
+      .split(/[/?\s]/)[0]
+      .toLowerCase();
+  }
+
+  let channel = sanitizeChannel(params.get("channel") || localStorage.getItem(CHANNEL_KEY) || "");
+
+  function setStatus(text, cls) {
+    statusEl.style.display = "";
+    statusEl.className = cls || "";
+    statusEl.textContent = text;
+  }
+
+  let ws = null, wsRetry = null;
+  function connectIRC() {
+    if (!channel) return;
+    try { ws = new WebSocket("wss://irc-ws.chat.twitch.tv:443"); } catch { return; }
+    setStatus("connecting…", "");
+    ws.onopen = () => {
+      ws.send("CAP REQ :twitch.tv/tags");
+      ws.send("NICK justinfan" + Math.floor(Math.random() * 900000 + 100000));
+      ws.send("JOIN #" + channel);
+      setStatus("● #" + channel, "live");
+      setTimeout(() => (statusEl.style.display = "none"), 3000);
+    };
+    ws.onmessage = (e) => {
+      for (const line of e.data.split("\r\n")) {
+        if (!line) continue;
+        if (line.startsWith("PING")) { ws.send("PONG :tmi.twitch.tv"); continue; }
+        const p = parseLine(line);
+        if (p) onPrivmsg(p.tags, p.name, p.msg);
+      }
+    };
+    ws.onclose = () => {
+      statusEl.style.display = "";
+      setStatus("reconnecting…", "err");
+      clearTimeout(wsRetry);
+      wsRetry = setTimeout(connectIRC, 3000);
+    };
+    ws.onerror = () => { try { ws.close(); } catch {} };
+  }
+
+  // Pure parser: IRC line -> {tags,name,msg} for PRIVMSG lines, else null.
+  function parseLine(line) {
+    if (!line.includes("PRIVMSG")) return null;
+    let tags = {}, rest = line;
+    if (line[0] === "@") {
+      const sp = line.indexOf(" ");
+      for (const kv of line.slice(1, sp).split(";")) {
+        const i = kv.indexOf("=");
+        tags[kv.slice(0, i)] = decodeURIComponent(kv.slice(i + 1).replace(/\\s/g, " "));
+      }
+      rest = line.slice(sp + 1);
+    }
+    const mi = rest.indexOf("PRIVMSG");
+    const ci = rest.indexOf(":", mi);
+    if (ci < 0) return null;
+    const msg = rest.slice(ci + 1);
+    const name = tags["display-name"] || (rest.match(/^:([^!]+)!/) || [])[1] || "viewer";
+    return { tags, name, msg };
+  }
+
+  connectBtn.addEventListener("click", () => {
+    const v = sanitizeChannel(channelInput.value);
+    if (!v) return;
+    channel = v;
+    localStorage.setItem(CHANNEL_KEY, channel);
+    gateEl.style.display = "none";
+    connectIRC();
+  });
+  channelInput.addEventListener("keydown", (e) => { if (e.key === "Enter") connectBtn.click(); });
+
+  /* ============================ boot ============================ */
+  if (DEMO) {
+    startDemo();
+  } else if (channel) {
+    connectIRC();
+  } else {
+    gateEl.style.display = "";
+  }
+  </script>
+</body>
+</html>

@@ -1,0 +1,56 @@
+PINNED MESSAGE - OBS Overlay
+=============================
+
+WHAT THIS IS
+  Mirrors Twitch's own "pinned chat message" banner - when a viewer sends
+  a Hype Chat (pays to pin their message for a while), it pops in here as
+  a Dracula-themed card: their name, message, pin level, and amount paid,
+  with a shrinking bar showing time left before it un-pins.
+
+  No Twitch login needed - it reads chat anonymously (read-only), same as
+  Chat Bubbles and the map/POI selector.
+
+WHAT'S IN THIS FOLDER
+  pinned-message.html  - the overlay (the only important file)
+  READ-ME-FIRST.txt    - this file
+
+OBS SETUP
+  1. Start the local server (double-click start-windows.bat one folder
+     up, or `python3 -m http.server 8777` from the repo root).
+  2. Add a "Browser Source":
+       - URL:    http://localhost:8777/pinned-message/pinned-message.html
+       - Width:  800     Height: 260   (it only draws a banner near the
+         top, so a short source is fine - taller than that just leaves
+         empty transparent space below it)
+  3. Right-click -> Interact, type your Twitch channel name in the
+     on-screen box, and click "Connect Chat". (One time - it's
+     remembered in this browser source after that.) Or skip the box
+     entirely by adding ?channel=yourname to the URL.
+  4. That's it. Send yourself a Hype Chat to test it, or use ?demo=1
+     (below) to preview without spending anything.
+
+TIPS
+  - Add  ?demo=1  to the URL to preview with simulated pins on a loop,
+    no real channel or Hype Chats needed:
+        http://localhost:8777/pinned-message/pinned-message.html?demo=1
+  - Known bots are filtered out by default (CONFIG.ignore in
+    pinned-message.html) - shouldn't matter here since bots can't send
+    Hype Chats, but it's there for consistency with the other overlays.
+  - Pin durations (CONFIG.levelDurationMs) are a best-effort match to how
+    long Twitch itself keeps a Hype Chat pinned per level - Twitch hasn't
+    published this as a stable contract, so if your own Hype Chats
+    visibly outlast (or undershoot) what this overlay shows, adjust the
+    numbers for that level.
+  - CONFIG.maxDisplayMs (default 10 minutes) caps how long any single pin
+    lingers on screen - top-tier Hype Chats are pinned for hours on
+    Twitch itself, which is too long for a stream overlay. Raise it (or
+    match it to a levelDurationMs value) if you want big pins to hold the
+    screen for longer.
+  - Multiple pins in quick succession queue up and show one at a time,
+    first-in-first-out - Twitch doesn't publish a public rule for how it
+    handles overlapping pins, so this keeps it simple rather than
+    guessing at their internal priority logic.
+  - The accent color per level (cyan -> green -> yellow -> orange -> pink
+    -> red -> purple -> white as the tiers go up) is this overlay's own
+    Dracula-palette ramp, not Twitch's official Hype Chat colors - Twitch
+    doesn't expose those over chat, only the tier name (ONE..TEN).
