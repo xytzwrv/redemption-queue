@@ -7,8 +7,8 @@
 <meta name="description" content="Transparent OBS-ready 3D Rubix cube that scrambles, then slowly solves itself over one minute, looping forever." />
 <style>
   :root {
-    --cubie: 54px;
-    --gap: 4px;
+    --cubie: 48px;
+    --gap: 5px;
     --shadow: drop-shadow(0 18px 26px rgba(0,0,0,.45));
   }
 
@@ -29,7 +29,8 @@
     inset: 0;
     display: grid;
     place-items: center;
-    perspective: 780px;
+    perspective: 940px;
+    perspective-origin: 50% 48%;
     pointer-events: none;
   }
 
@@ -55,9 +56,9 @@
     left: 0;
     border-radius: 14%;
     box-shadow:
-      inset 0 0 0 2px rgba(0,0,0,.42),
-      inset 0 0 12px rgba(255,255,255,.08),
-      inset 0 -10px 18px rgba(0,0,0,.12);
+      inset 0 0 0 2px rgba(0,0,0,.50),
+      inset 8px 10px 16px rgba(255,255,255,.10),
+      inset -10px -12px 18px rgba(0,0,0,.26);
   }
 
   #status {
@@ -113,6 +114,9 @@
   const GAP = Number(params.get("gap")) || parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--gap"));
   const SPACING = CUBE_SIZE + GAP;
   const HALF = CUBE_SIZE / 2;
+  const requestedScale = Number(params.get("scale"));
+  const autoScale = Math.min(1.15, Math.max(0.46, Math.min(innerWidth || 320, innerHeight || 320) / 300));
+  const FIT_SCALE = Number.isFinite(requestedScale) && requestedScale > 0 ? requestedScale : autoScale;
   const SCRAMBLE_MOVES = Number(params.get("moves")) || 24;
   const SCRAMBLE_MS = Number(params.get("scrambleMs")) || 210;
   const SOLVE_MS = Number(params.get("solveMs")) || 60000;
@@ -183,7 +187,14 @@
     {dir: [0, 0,  1], color: "#2ecc71"},
     {dir: [0, 0, -1], color: "#3b82f6"},
   ];
-  const faceOrientation = [rotY(Math.PI / 2), rotY(-Math.PI / 2), rotX(-Math.PI / 2), rotX(Math.PI / 2), identity(), rotY(Math.PI)];
+  const faceTransform = [
+    `rotateY(90deg) translateZ(${HALF}px)`,
+    `rotateY(-90deg) translateZ(${HALF}px)`,
+    `rotateX(-90deg) translateZ(${HALF}px)`,
+    `rotateX(90deg) translateZ(${HALF}px)`,
+    `translateZ(${HALF}px)`,
+    `rotateY(180deg) translateZ(${HALF}px)`,
+  ];
   const interior = "#16181f";
   const cubies = [];
 
@@ -204,8 +215,9 @@
           face.className = "face";
           face.style.width = `${CUBE_SIZE}px`;
           face.style.height = `${CUBE_SIZE}px`;
-          face.style.background = dir[0] * x + dir[1] * y + dir[2] * z === 1 ? color : interior;
-          face.style.transform = matrix3d(faceOrientation[i], dir[0] * HALF, dir[1] * HALF, dir[2] * HALF);
+          // Color every cubie face so the element reads as true 3D cubes from a stream-sized view.
+          face.style.background = color;
+          face.style.transform = faceTransform[i];
           el.appendChild(face);
         }
 
@@ -297,7 +309,11 @@
       if (index >= queue.length) switchPhase(now);
     }
 
-    scene.style.transform = `rotateX(${Math.sin(now / 9000) * 8}deg) rotateY(${(now / 72) % 360}deg)`;
+    // Keep the cube at an isometric camera angle so OBS never catches it flat/front-on.
+    const cameraX = 32 + Math.sin(now / 9000) * 4;
+    const cameraY = -42 + Math.sin(now / 11000) * 7;
+    const cameraZ = 4 + Math.sin(now / 13000) * 2;
+    scene.style.transform = `scale(${FIT_SCALE}) rotateX(${cameraX}deg) rotateY(${cameraY}deg) rotateZ(${cameraZ}deg)`;
     updateStatus(now);
     requestAnimationFrame(tick);
   }
