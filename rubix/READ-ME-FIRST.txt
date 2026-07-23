@@ -7,6 +7,9 @@ https://xytzwrv.github.io/redemption-queue/rubix/
 OBS-safe audio-reactive URL (recommended for OBS Browser Source):
 https://xytzwrv.github.io/redemption-queue/rubix/?mic=obs&obsInput=Mic%2FAux
 
+Audio-reactive URL with visible sensitivity slider:
+https://xytzwrv.github.io/redemption-queue/rubix/?mic=obs&obsInput=Mic%2FAux&controls=1
+
 Direct browser microphone URL (works in normal browsers, often blocked in OBS Browser Source):
 https://xytzwrv.github.io/redemption-queue/rubix/?mic=1
 
@@ -17,6 +20,7 @@ What it does:
 - Scrambles itself quickly
 - Slowly solves itself over 60 seconds in normal mode
 - With ?mic=obs, reads OBS WebSocket audio meter levels instead of requesting browser mic permission
+- With ?controls=1, shows a sensitivity slider; higher sensitivity makes quieter audio solve faster
 - With ?mic=1, uses browser getUserMedia microphone permission where supported
 - Randomizes again and loops forever
 
@@ -25,11 +29,13 @@ OBS WebSocket setup for ?mic=obs:
 2. Enable the WebSocket server on port 4455.
 3. Recommended easiest local setup: disable authentication.
 4. Add the Browser Source URL with your input name, for example:
-   https://xytzwrv.github.io/redemption-queue/rubix/?mic=obs&obsInput=Mic%2FAux
+   https://xytzwrv.github.io/redemption-queue/rubix/?mic=obs&obsInput=Mic%2FAux&controls=1
 5. If your mic source has a different name, URL-encode it in obsInput.
 
 Optional URL params:
 - mic=obs        OBS-safe mode using OBS WebSocket audio meters
+- controls=1     show the sensitivity slider
+- sensitivity=1.5 set initial sensitivity without showing slider; range 0.1 to 4
 - obsInput=Mic%2FAux exact OBS input name to listen to; blank uses loudest input
 - obsHost=127.0.0.1 OBS WebSocket host
 - obsPort=4455   OBS WebSocket port
